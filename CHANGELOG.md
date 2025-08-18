@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+
 - Initial release of Geo Images application
 - Comprehensive GPS coordinate processing for photos
 - Multi-format image support (JPEG, RAW, PNG, WebP, etc.)
@@ -25,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive documentation and examples
 
 ### Features
+
 - **File Discovery Service**: Recursive directory scanning with format detection
 - **EXIF Service**: Metadata extraction and GPS writing with piexifjs and exiftool
 - **Timeline Parser**: Google Maps timeline data processing and management
@@ -35,12 +37,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Utility Modules**: Coordinates, distance calculations, user input, logging
 
 ### Technical Specifications
+
 - **Supported Formats**: JPEG, TIFF, PNG, WebP, AVIF, HEIF, HEIC, CR2, CR3, NEF, ARW, ORF, RW2, RAF, PEF, SRW, DNG
 - **Performance**: 91%+ interpolation success rate, 25 images per batch default
 - **Architecture**: Modular service-oriented design with ES modules
 - **Dependencies**: Minimal dependencies focusing on performance and reliability
 
 ### Configuration
+
 - Environment-based configuration with .env support
 - Configurable timeline tolerance and batch processing
 - Enhanced fallback with progressive search
@@ -48,6 +52,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive logging levels
 
 ### Documentation
+
 - Complete README with usage examples
 - Architecture documentation
 - API documentation for all services
@@ -56,7 +61,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.0.0] - 2024-01-XX
 
-### Added
+### Initial Release Features
+
 - Initial stable release
 - All core functionality implemented
 - Production-ready codebase
@@ -75,6 +81,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 This initial release provides a complete solution for adding GPS coordinates to photos using Google Maps timeline data. The application is designed for both casual users and power users who need to process large collections of images.
 
 #### Key Capabilities
+
 - Process thousands of images efficiently
 - Support for all major image formats including RAW
 - Intelligent GPS coordinate interpolation
@@ -83,12 +90,14 @@ This initial release provides a complete solution for adding GPS coordinates to 
 - Production-ready architecture
 
 #### Performance Characteristics
+
 - Typical processing speed: 2-5 seconds per image
 - Memory usage: <1GB for typical collections
 - Success rate: 91%+ for images with timeline coverage
 - Batch processing: Configurable for optimal performance
 
 #### Use Cases
+
 - Photography workflow automation
 - Digital asset management
 - Travel photo organization
@@ -100,6 +109,7 @@ This initial release provides a complete solution for adding GPS coordinates to 
 ## Development History
 
 ### Design Principles
+
 - **Simplicity**: Clean, readable code with minimal dependencies
 - **Performance**: Optimized for large-scale image processing
 - **Reliability**: Comprehensive error handling and validation
@@ -107,6 +117,7 @@ This initial release provides a complete solution for adding GPS coordinates to 
 - **Documentation**: Thorough documentation for users and developers
 
 ### Architecture Evolution
+
 The application evolved from a simple script to a comprehensive service-oriented architecture:
 
 1. **Initial Concept**: Basic timeline matching
@@ -116,6 +127,7 @@ The application evolved from a simple script to a comprehensive service-oriented
 5. **Production Ready**: CI/CD, monitoring, documentation
 
 ### Future Roadmap
+
 - Web interface for easier usage
 - Additional GPS data sources
 - Machine learning-based location prediction
@@ -128,6 +140,7 @@ The application evolved from a simple script to a comprehensive service-oriented
 ## Contributing
 
 We welcome contributions! Please see our contributing guidelines for details on:
+
 - Code style and standards
 - Testing requirements
 - Documentation updates
@@ -137,6 +150,7 @@ We welcome contributions! Please see our contributing guidelines for details on:
 ## Support
 
 For support, please:
+
 1. Check the documentation and troubleshooting guide
 2. Search existing GitHub issues
 3. Create a new issue with detailed information

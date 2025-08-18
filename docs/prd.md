@@ -1,6 +1,6 @@
 # Image Geolocation Processor
 
-## what to buid
+## what to build
 
 The **Image Geolocation Processor** is a comprehensive Node.js application that intelligently adds GPS coordinates to photos that lack location data. It analyzes image timestamps and uses multiple fallback mechanisms to determine where each photo was taken, leveraging Google Maps timeline data and nearby geotagged images.
 
@@ -49,14 +49,14 @@ npm start -- test-subset/
 
 The program runs in two main phases:
 
-**Phase 1: Discovery and Analysis**
+#### **Phase 1: Discovery and Analysis**
 
 - Scans your photo directory recursively
 - Extracts existing GPS data and timestamps from images
 - Builds a database of photo metadata
 - Augments timeline data location.json with GPS coordinates and dates from photos that already have them
 
-**Phase 2: Geolocation Inference**
+#### **Phase 2: Geolocation Inference**
 
 - For photos without GPS, tries multiple methods:
   1. **Timeline matching**: Finds GPS records within 60 minutes of photo timestamp
@@ -71,7 +71,7 @@ at the end it writes out the data/location.json file
 
 The application follows a modular service-oriented architecture:
 
-```
+```bash
 src/
 ├── index.js                    # Main orchestrator
 ├── services/                   # Core business logic

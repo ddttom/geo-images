@@ -41,6 +41,7 @@ cp .env.example .env
    - Have photos in a directory you want to process
 
 2. **Run the application**:
+
    ```bash
    npm start
    ```
@@ -63,13 +64,15 @@ npm start -- test-subset/
 
 ### Processing Phases
 
-**Phase 1: Discovery and Analysis**
+#### **Phase 1: Discovery and Analysis**
+
 - Scans your photo directory recursively
 - Extracts existing GPS data and timestamps from images
 - Builds a database of photo metadata
 - Augments timeline data with GPS coordinates from photos that already have them
 
-**Phase 2: Geolocation Inference**
+#### **Phase 2: Geolocation Inference**
+
 - For photos without GPS, tries multiple methods:
   1. **Timeline matching**: Finds GPS records within 60 minutes of photo timestamp
   2. **Enhanced fallback**: Progressive search (1h → 6h → same day) for distant locations
@@ -139,7 +142,7 @@ this.config = {
 
 ### Project Structure
 
-```
+```bash
 src/
 ├── index.js                    # Main orchestrator
 ├── services/                   # Core business logic
@@ -160,16 +163,19 @@ src/
 ### Key Components
 
 #### Geolocation Database System
+
 - In-memory database with optional SQLite persistence
 - Priority-based GPS source management
 - Incremental processing (only new/changed images on subsequent runs)
 
 #### Interpolation Engine
+
 - Primary interpolation using Google Maps timeline data
 - Enhanced fallback with progressive search expansion
 - Spatial interpolation between known GPS points
 
 #### EXIF Processing
+
 - Multi-format support with piexifjs and exiftool
 - Hybrid GPS writing approach for maximum compatibility
 - Optimized processing for RAW formats
@@ -177,9 +183,11 @@ src/
 ## Supported Formats
 
 ### Standard Formats
+
 - JPEG, TIFF, PNG, WebP, AVIF, HEIF, HEIC
 
 ### RAW Formats
+
 - Canon: CR2, CR3
 - Nikon: NEF
 - Sony: ARW
@@ -193,6 +201,7 @@ src/
 ## Performance
 
 ### Typical Performance Metrics
+
 - **Batch Size**: 25 images per batch (optimized)
 - **Success Rates**: 91%+ interpolation success
 - **Processing Speed**: ~2-5 seconds per image (varies by format)
@@ -263,21 +272,25 @@ npm run format     # Format code with Prettier
 ### Common Issues
 
 #### No GPS coordinates found
+
 - Verify `Timeline Edits.json` is in the `data/` directory
 - Check that timeline data covers your photo date range
 - Enable enhanced fallback for better coverage
 
 #### Processing is slow
+
 - Reduce batch size in configuration
 - Disable enhanced fallback if not needed
 - Ensure sufficient memory is available
 
 #### EXIF writing fails
+
 - Check file permissions
 - Verify image format is supported
 - Try with a smaller batch size
 
 #### Timeline data not loading
+
 - Verify JSON format is valid
 - Check file path and permissions
 - Review logs for specific error messages
