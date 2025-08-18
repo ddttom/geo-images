@@ -315,7 +315,7 @@ class ExifService {
         GPSLongitude: coordinates.longitude,
         GPSLatitudeRef: coordinates.latitude >= 0 ? 'N' : 'S',
         GPSLongitudeRef: coordinates.longitude >= 0 ? 'E' : 'W'
-      });
+      }, ['-overwrite_original']);
       
       this.logger.debug(`GPS data written to ${filePath} using exiftool`);
       return true;

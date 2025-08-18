@@ -64,7 +64,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Error Handling**: Comprehensive logging with 8 failure categories and specific recommendations
 - **User Experience**: Context-aware feedback and clean application exit
 
-## [1.0.0] - 2024-XX-XX
+## [1.0.0] - 2024-01-XX
 
 ### Added - Initial Release
 
@@ -102,8 +102,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Technical Specifications
 
-- **Supported Formats**: JPEG, TIFF, PNG, WebP, AVIF, HEIF, HEIC, HIF, CR2, CR3, NEF, ARW, ORF, RW2, RAF, PEF, SRW, DNG
-- **Performance**: 96.5%+ interpolation success rate, 25 images per batch default
+- **Supported Formats**: JPEG, TIFF, PNG, WebP, AVIF, HEIF, HEIC, CR2, CR3, NEF, ARW, ORF, RW2, RAF, PEF, SRW, DNG
+- **Performance**: 91%+ interpolation success rate, 25 images per batch default
 - **Architecture**: Modular service-oriented design with ES modules
 - **Dependencies**: Minimal dependencies focusing on performance and reliability
 
@@ -122,19 +122,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - API documentation for all services
 - Troubleshooting guide
 - Development setup instructions
-
-## [1.0.0] - 2024-01-XX
-
-### Initial Release Features
-
-- Initial stable release
-- All core functionality implemented
-- Production-ready codebase
-- Comprehensive test coverage
-- Full documentation
-- CI/CD pipeline
-- Security measures
-- Performance optimizations
 
 ---
 
