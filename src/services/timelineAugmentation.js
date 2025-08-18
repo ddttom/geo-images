@@ -7,7 +7,8 @@
  * @author Tom Cranstoun <ddttom@github.com>
  */
 
-import { writeFile, readFile, existsSync, copyFile } from 'fs/promises';
+import { writeFile, readFile, copyFile } from 'fs/promises';
+import { existsSync } from 'fs';
 import { join } from 'path';
 import { calculateDistance } from '../utils/distance.js';
 

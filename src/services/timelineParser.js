@@ -10,6 +10,7 @@
 import { readFile, writeFile } from 'fs/promises';
 import { existsSync } from 'fs';
 import { join } from 'path';
+import TimelineEditsParserService from './timelineEditsParser.js';
 
 /**
  * Service for parsing Google Maps timeline data
@@ -36,11 +37,11 @@ class TimelineParserService {
       // Load existing location.json if it exists
       await this.loadExistingLocationData();
       
-      // Load and process Timeline Edits.json if it exists
+      // Load and process timeline file if it exists
       if (existsSync(this.timelineEditsPath)) {
-        await this.loadTimelineEdits();
+        await this.loadTimelineFile();
       } else {
-        this.logger.warn('Timeline Edits.json not found, using existing location data only');
+        this.logger.warn('Timeline file not found, using existing location data only');
       }
       
       this.logger.info(`Loaded ${this.locationData.size} location records`);
@@ -49,6 +50,94 @@ class TimelineParserService {
       this.logger.error('Failed to load timeline data:', error.message);
       throw error;
     }
+  }
+
+  /**
+   * Load and process timeline file (supports both standard and edits formats)
+   * @returns {Promise<void>}
+   */
+  async loadTimelineFile() {
+    try {
+      const timelineJson = await readFile(this.timelineEditsPath, 'utf8');
+      const timelineData = JSON.parse(timelineJson);
+      
+      // Detect format and process accordingly
+      if (timelineData.timelineObjects) {
+        this.logger.info('Processing standard Timeline format...');
+        await this.processStandardTimeline(timelineData);
+      } else if (timelineData.timelineEdits) {
+        this.logger.info('Processing Timeline Edits format...');
+        await this.processTimelineEdits(timelineData);
+      } else {
+        this.logger.warn('Unknown timeline format detected');
+        // Try to process as Timeline Edits anyway
+        await this.processTimelineEdits(timelineData);
+      }
+      
+    } catch (error) {
+      this.logger.error('Failed to process timeline file:', error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Process standard timeline format
+   * @param {Object} timelineData - Timeline data
+   * @returns {Promise<void>}
+   */
+  async processStandardTimeline(timelineData) {
+    let processedCount = 0;
+    let skippedCount = 0;
+    
+    // Process timeline entries
+    if (timelineData.timelineObjects) {
+      for (const timelineObject of timelineData.timelineObjects) {
+        if (timelineObject.activitySegment) {
+          this.processActivitySegment(timelineObject.activitySegment);
+          processedCount++;
+        } else if (timelineObject.placeVisit) {
+          this.processPlaceVisit(timelineObject.placeVisit);
+          processedCount++;
+        } else {
+          skippedCount++;
+        }
+      }
+    }
+    
+    this.logger.info(`Processed ${processedCount} timeline objects, skipped ${skippedCount}`);
+  }
+
+  /**
+   * Process Timeline Edits format using dedicated parser
+   * @param {Object} timelineData - Timeline edits data
+   * @returns {Promise<void>}
+   */
+  async processTimelineEdits(timelineData) {
+    const editsParser = new TimelineEditsParserService(this.logger);
+    
+    // Process the timeline edits data
+    let processedCount = 0;
+    
+    if (timelineData.timelineEdits) {
+      for (const edit of timelineData.timelineEdits) {
+        const processed = editsParser.processTimelineEdit(edit);
+        processedCount += processed;
+      }
+    }
+    
+    // Merge the location data from the edits parser
+    const editsLocationData = editsParser.getLocationDataArray();
+    editsLocationData.forEach(record => {
+      const timestampMs = new Date(record.timestamp).getTime();
+      this.locationData.set(timestampMs, {
+        latitude: record.latitude,
+        longitude: record.longitude,
+        source: record.source,
+        accuracy: record.accuracy
+      });
+    });
+    
+    this.logger.info(`Processed ${processedCount} location points from Timeline Edits format`);
   }
 
   /**
@@ -78,43 +167,6 @@ class TimelineParserService {
       }
     } catch (error) {
       this.logger.warn('Failed to load existing location.json:', error.message);
-    }
-  }
-
-  /**
-   * Load and process Timeline Edits.json
-   * @returns {Promise<void>}
-   */
-  async loadTimelineEdits() {
-    try {
-      const timelineJson = await readFile(this.timelineEditsPath, 'utf8');
-      const timelineData = JSON.parse(timelineJson);
-      
-      this.logger.info('Processing Timeline Edits.json...');
-      
-      let processedCount = 0;
-      let skippedCount = 0;
-      
-      // Process timeline entries
-      if (timelineData.timelineObjects) {
-        for (const timelineObject of timelineData.timelineObjects) {
-          if (timelineObject.activitySegment) {
-            this.processActivitySegment(timelineObject.activitySegment);
-            processedCount++;
-          } else if (timelineObject.placeVisit) {
-            this.processPlaceVisit(timelineObject.placeVisit);
-            processedCount++;
-          } else {
-            skippedCount++;
-          }
-        }
-      }
-      
-      this.logger.info(`Processed ${processedCount} timeline objects, skipped ${skippedCount}`);
-      
-    } catch (error) {
-      this.logger.error('Failed to process Timeline Edits.json:', error.message);
-      throw error;
     }
   }
 
@@ -198,6 +250,12 @@ class TimelineParserService {
     if (!timestamp || !location) return;
     
     try {
+      // Validate timestamp first
+      if (!this.isValidTimestamp(timestamp)) {
+        this.logger.debug(`Invalid timestamp from ${source}: ${timestamp}`);
+        return;
+      }
+      
       // Extract coordinates
       let latitude, longitude, accuracy;
       
@@ -312,13 +370,25 @@ class TimelineParserService {
     const locationArray = [];
     
     for (const [timestamp, location] of this.locationData) {
-      locationArray.push({
-        timestamp: new Date(timestamp).toISOString(),
-        latitude: location.latitude,
-        longitude: location.longitude,
-        source: location.source,
-        accuracy: location.accuracy
-      });
+      try {
+        // Validate timestamp before creating Date object
+        const date = new Date(timestamp);
+        if (isNaN(date.getTime())) {
+          this.logger.debug(`Skipping invalid timestamp in locationData: ${timestamp}`);
+          continue;
+        }
+        
+        locationArray.push({
+          timestamp: date.toISOString(),
+          latitude: location.latitude,
+          longitude: location.longitude,
+          source: location.source,
+          accuracy: location.accuracy
+        });
+      } catch (error) {
+        this.logger.debug(`Error processing timestamp ${timestamp}: ${error.message}`);
+        continue;
+      }
     }
     
     // Sort by timestamp
@@ -353,6 +423,18 @@ class TimelineParserService {
   addImageGPSData(filePath, gpsData, timestamp) {
     if (!timestamp || !gpsData.latitude || !gpsData.longitude) return;
     
+    // Validate timestamp before processing
+    if (!this.isValidTimestamp(timestamp)) {
+      this.logger.debug(`Invalid timestamp for image ${filePath}: ${timestamp}`);
+      return;
+    }
+    
+    // Validate coordinates
+    if (!this.isValidCoordinate(gpsData.latitude, gpsData.longitude)) {
+      this.logger.debug(`Invalid coordinates for image ${filePath}: ${gpsData.latitude}, ${gpsData.longitude}`);
+      return;
+    }
+    
     const timestampMs = timestamp.getTime();
     
     // Add with high priority (image GPS is usually accurate)
@@ -362,6 +444,18 @@ class TimelineParserService {
       source: `image:${filePath}`,
       accuracy: 1 // High accuracy for image GPS
     });
+  }
+
+  /**
+   * Validate timestamp value
+   * @param {*} timestamp - Timestamp value to validate
+   * @returns {boolean} True if valid
+   */
+  isValidTimestamp(timestamp) {
+    if (!timestamp) return false;
+    
+    const date = new Date(timestamp);
+    return !isNaN(date.getTime()) && date.getTime() > 0;
   }
 
   /**
