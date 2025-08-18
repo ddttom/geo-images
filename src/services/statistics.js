@@ -362,18 +362,27 @@ class StatisticsService {
     const recommendations = [];
     const successRate = this.processedImages > 0 ? (this.successCount / this.processedImages) * 100 : 0;
     
-    // Success rate recommendations
-    if (successRate < 50) {
+    // Success rate recommendations - only if images were actually processed
+    if (this.processedImages > 0) {
+      if (successRate < 50) {
+        recommendations.push({
+          type: 'low_success_rate',
+          priority: 'high',
+          message: `Low success rate (${successRate.toFixed(1)}%). Consider checking timeline data quality and image timestamps.`
+        });
+      } else if (successRate > 90) {
+        recommendations.push({
+          type: 'excellent_performance',
+          priority: 'info',
+          message: `Excellent success rate (${successRate.toFixed(1)}%). Current configuration is working well.`
+        });
+      }
+    } else if (this.totalImages > 0) {
+      // Case where no images needed processing (all already had GPS)
       recommendations.push({
-        type: 'low_success_rate',
-        priority: 'high',
-        message: `Low success rate (${successRate.toFixed(1)}%). Consider checking timeline data quality and image timestamps.`
-      });
-    } else if (successRate > 90) {
-      recommendations.push({
-        type: 'excellent_performance',
+        type: 'no_processing_needed',
         priority: 'info',
-        message: `Excellent success rate (${successRate.toFixed(1)}%). Current configuration is working well.`
+        message: 'All images already have GPS coordinates. No processing was required.'
       });
     }
     

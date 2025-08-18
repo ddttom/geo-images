@@ -64,11 +64,20 @@ class InterpolationService {
    */
   async interpolateCoordinates(timestamp, filePath) {
     if (!timestamp) {
-      this.logger.error(`No timestamp available for ${filePath} - GPS processing skipped`);
+      const errorMsg = `No timestamp available for ${filePath} - GPS processing skipped`;
+      this.logger.error(errorMsg, {
+        filePath,
+        timestamp: null,
+        stage: 'timestamp_validation'
+      });
       throw new Error('Missing timestamp - GPS processing requires valid image timestamp');
     }
 
-    this.logger.debug(`Interpolating coordinates for ${filePath} at ${timestamp.toISOString()}`);
+    this.logger.debug(`Interpolating coordinates for ${filePath} at ${timestamp.toISOString()}`, {
+      filePath,
+      timestamp: timestamp.toISOString(),
+      stage: 'interpolation_start'
+    });
 
     // Priority chain: Database → EXIF → Timeline → Nearby Images → Enhanced Fallback
     let result = null;
@@ -142,7 +151,23 @@ class InterpolationService {
       }
     }
 
-    this.logger.debug(`No coordinates found for ${filePath}`);
+    // Log detailed failure analysis
+    this.logger.error(`No coordinates found for ${filePath} - all interpolation methods failed`, {
+      filePath,
+      timestamp: timestamp.toISOString(),
+      stage: 'interpolation_complete_failure',
+      attemptedMethods: {
+        database: !!this.geolocationDb,
+        timeline: !!this.timelineParser,
+        nearbyImages: this.nearbyImages.size,
+        enhancedFallback: this.config.enhancedFallback?.enabled
+      },
+      timelineStats: this.timelineParser ? {
+        totalRecords: this.timelineParser.getLocationDataArray().length,
+        hasData: this.timelineParser.getLocationDataArray().length > 0
+      } : null
+    });
+    
     return null;
   }
 

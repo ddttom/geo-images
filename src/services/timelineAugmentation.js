@@ -27,9 +27,10 @@ class TimelineAugmentationService {
   /**
    * Augment timeline with GPS data from images
    * @param {Array} imageMetadata - Array of image metadata objects
+   * @param {Object} timelineParser - Existing timeline parser instance
    * @returns {Promise<Object>} Augmentation results
    */
-  async augmentTimeline(imageMetadata) {
+  async augmentTimeline(imageMetadata, timelineParser = null) {
     this.logger.info('Starting timeline augmentation...');
     
     try {
@@ -51,16 +52,16 @@ class TimelineAugmentationService {
       
       this.logger.info(`Found ${geotaggedImages.length} geotagged images for augmentation`);
       
-      // Load existing timeline data
-      const timelineParser = await this.getTimelineParser();
+      // Use provided timeline parser or get a new one
+      const parser = timelineParser || await this.getTimelineParser();
       
       // Process each geotagged image
       for (const imageData of geotaggedImages) {
-        await this.processGeotaggedImage(imageData, timelineParser);
+        await this.processGeotaggedImage(imageData, parser);
       }
       
       // Save augmented timeline data
-      await timelineParser.saveLocationData();
+      await parser.saveLocationData();
       
       const results = this.getResults();
       this.logger.info(`Timeline augmentation completed: ${results.augmentedCount} added, ${results.duplicateCount} duplicates, ${results.errorCount} errors`);

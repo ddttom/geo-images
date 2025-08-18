@@ -57,6 +57,9 @@ class GeoImagesApp {
         exportPath: 'data/geolocation-export.json',  // JSON export path
         validateCoordinates: true,         // Validate GPS coordinates
         coordinateSystem: 'WGS84'          // Coordinate system standard
+      },
+      exif: {
+        useFileTimestampFallback: true    // Use file modification time as fallback for missing EXIF timestamps
       }
     };
 
@@ -75,7 +78,7 @@ class GeoImagesApp {
    */
   initializeServices() {
     this.fileDiscovery = new FileDiscoveryService(this.logger);
-    this.exifService = new ExifService(this.logger);
+    this.exifService = new ExifService(this.logger, this.config.exif);
     this.timelineParser = new TimelineParserService(this.logger);
     this.interpolation = new InterpolationService(this.config, this.logger);
     this.geolocationDb = new GeolocationDatabaseService(this.config.geolocationDatabase, this.logger);
@@ -120,9 +123,14 @@ class GeoImagesApp {
       
       console.log(chalk.green.bold('\n✅ Processing completed successfully!'));
       
+      // Clean up services and exit
+      await this.cleanup();
+      process.exit(0);
+      
     } catch (error) {
       this.logger.error('Application error:', error);
       console.error(chalk.red.bold('\n❌ Application failed:'), error.message);
+      await this.cleanup();
       process.exit(1);
     }
   }
@@ -169,7 +177,7 @@ class GeoImagesApp {
       // Augment timeline with GPS data from images
       if (this.config.timelineAugmentation.enabled) {
         spinner.start('Augmenting timeline data...');
-        await this.timelineAugmentation.augmentTimeline(imageMetadata);
+        await this.timelineAugmentation.augmentTimeline(imageMetadata, this.timelineParser);
         spinner.succeed('Timeline augmentation completed');
       }
       
@@ -252,8 +260,23 @@ class GeoImagesApp {
   async processBatch(batch) {
     const promises = batch.map(async (imageData) => {
       try {
+        this.logger.debug(`Starting processing for ${imageData.filePath}`, {
+          filePath: imageData.filePath,
+          hasTimestamp: !!imageData.timestamp,
+          timestamp: imageData.timestamp?.toISOString(),
+          hasGPS: imageData.hasGPS,
+          format: imageData.format,
+          source: imageData.source,
+          stage: 'batch_processing_start'
+        });
+
         // Check if image has a valid timestamp before attempting GPS processing
         if (!imageData.timestamp) {
+          this.logger.warn(`Skipping ${imageData.filePath} - no timestamp available`, {
+            filePath: imageData.filePath,
+            source: imageData.source,
+            stage: 'timestamp_validation_failed'
+          });
           this.statistics.recordFailure('missing_timestamp', imageData.filePath, 'Image has no timestamp - GPS processing skipped');
           return;
         }
@@ -265,14 +288,25 @@ class GeoImagesApp {
         );
         
         if (coordinates) {
+          this.logger.debug(`Coordinates found for ${imageData.filePath}`, {
+            filePath: imageData.filePath,
+            coordinates,
+            stage: 'coordinates_found'
+          });
+
           // Validate coordinates
           if (this.config.geolocationDatabase.validateCoordinates) {
             if (!validateCoordinates(coordinates.latitude, coordinates.longitude)) {
-              throw new Error('Invalid coordinates');
+              throw new Error(`Invalid coordinates: lat=${coordinates.latitude}, lon=${coordinates.longitude}`);
             }
           }
           
           // Write GPS data to image
+          this.logger.debug(`Writing GPS data to ${imageData.filePath}`, {
+            filePath: imageData.filePath,
+            stage: 'gps_write_start'
+          });
+          
           await this.exifService.writeGPSData(imageData.filePath, coordinates);
           
           // Store in database with original image timestamp
@@ -284,18 +318,48 @@ class GeoImagesApp {
             imageData.timestamp // original image timestamp
           );
           
+          this.logger.debug(`Successfully processed ${imageData.filePath}`, {
+            filePath: imageData.filePath,
+            stage: 'processing_complete'
+          });
+          
           this.statistics.recordSuccess('interpolation', imageData.filePath);
         } else {
+          this.logger.warn(`No coordinates found for ${imageData.filePath}`, {
+            filePath: imageData.filePath,
+            stage: 'no_coordinates_found'
+          });
           this.statistics.recordFailure('interpolation', imageData.filePath, 'No suitable coordinates found');
         }
         
       } catch (error) {
+        // Enhanced error logging with full context
+        const errorMessage = error.message || error.toString() || 'Unknown error';
+        const errorStack = error.stack || 'No stack trace available';
+        
+        // Log comprehensive error details
+        this.logger.error(`Failed to process ${imageData.filePath}`, {
+          error: errorMessage,
+          stack: errorStack,
+          errorType: error.constructor.name,
+          imageData: {
+            filePath: imageData.filePath,
+            hasTimestamp: !!imageData.timestamp,
+            timestamp: imageData.timestamp?.toISOString(),
+            hasGPS: imageData.hasGPS,
+            format: imageData.format,
+            source: imageData.source
+          },
+          stage: 'processing_error'
+        });
+        
         // Handle timestamp validation errors specifically
-        if (error.message.includes('Missing timestamp')) {
-          this.statistics.recordFailure('missing_timestamp', imageData.filePath, error.message);
+        if (errorMessage.includes('Missing timestamp') || errorMessage.includes('timestamp')) {
+          this.statistics.recordFailure('missing_timestamp', imageData.filePath, errorMessage);
+        } else if (errorMessage.includes('interpolation') || errorMessage.includes('coordinates')) {
+          this.statistics.recordFailure('interpolation', imageData.filePath, errorMessage);
         } else {
-          this.logger.error(`Failed to process ${imageData.filePath}:`, error.message);
-          this.statistics.recordFailure('processing', imageData.filePath, error.message);
+          this.statistics.recordFailure('processing', imageData.filePath, errorMessage);
         }
       }
     });
@@ -333,21 +397,55 @@ class GeoImagesApp {
   }
 
   /**
+   * Clean up services and close connections
+   */
+  async cleanup() {
+    try {
+      this.logger.debug('Starting cleanup process');
+      
+      // Close geolocation database connections
+      if (this.geolocationDb && typeof this.geolocationDb.close === 'function') {
+        await this.geolocationDb.close();
+      }
+      
+      // Close any other service connections
+      if (this.timelineParser && typeof this.timelineParser.close === 'function') {
+        await this.timelineParser.close();
+      }
+      
+      this.logger.debug('Cleanup completed');
+    } catch (error) {
+      this.logger.warn('Error during cleanup:', error.message);
+    }
+  }
+
+  /**
    * Display processing summary
    */
   displaySummary(report) {
     console.log(chalk.blue.bold('\n📈 Processing Summary\n'));
     
-    console.log(`${chalk.green('✅ Total Images:')} ${report.totalImages}`);
-    console.log(`${chalk.green('✅ Successfully Processed:')} ${report.successCount}`);
-    console.log(`${chalk.red('❌ Failed:')} ${report.failureCount}`);
-    console.log(`${chalk.blue('📊 Success Rate:')} ${report.successRate.toFixed(1)}%`);
+    const imagesWithGPS = this.imageMetadata.filter(img => img.hasGPS).length;
+    const imagesWithoutGPS = this.imageMetadata.filter(img => !img.hasGPS).length;
     
-    if (report.failuresByCategory && Object.keys(report.failuresByCategory).length > 0) {
-      console.log(chalk.yellow.bold('\n📋 Failure Categories:'));
-      Object.entries(report.failuresByCategory).forEach(([category, count]) => {
-        console.log(`  ${chalk.yellow('•')} ${category}: ${count}`);
-      });
+    console.log(`${chalk.green('✅ Total Images Found:')} ${report.totalImages}`);
+    console.log(`${chalk.cyan('📍 Already Had GPS:')} ${imagesWithGPS}`);
+    console.log(`${chalk.yellow('🔍 Needed Processing:')} ${imagesWithoutGPS}`);
+    
+    // Only show processing statistics if there were images that needed processing
+    if (imagesWithoutGPS > 0) {
+      console.log(`${chalk.green('✅ Successfully Processed:')} ${report.successCount}`);
+      console.log(`${chalk.red('❌ Failed:')} ${report.failureCount}`);
+      console.log(`${chalk.blue('📊 Success Rate:')} ${report.successRate.toFixed(1)}% (of images needing GPS)`);
+      
+      if (report.failuresByCategory && Object.keys(report.failuresByCategory).length > 0) {
+        console.log(chalk.yellow.bold('\n📋 Failure Categories:'));
+        Object.entries(report.failuresByCategory).forEach(([category, count]) => {
+          console.log(`  ${chalk.yellow('•')} ${category}: ${count}`);
+        });
+      }
+    } else {
+      console.log(chalk.green.bold('\n🎉 All images already have GPS coordinates - no processing needed!'));
     }
   }
 }

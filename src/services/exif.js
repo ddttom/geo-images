@@ -7,7 +7,7 @@
  * @author Tom Cranstoun <ddttom@github.com>
  */
 
-import { readFile, writeFile } from 'fs/promises';
+import { readFile, writeFile, stat } from 'fs/promises';
 import { extname } from 'path';
 import piexif from 'piexifjs';
 import { exiftool } from 'exiftool-vendored';
@@ -17,8 +17,12 @@ import sharp from 'sharp';
  * Service for EXIF metadata operations
  */
 class ExifService {
-  constructor(logger) {
+  constructor(logger, options = {}) {
     this.logger = logger;
+    this.options = {
+      useFileTimestampFallback: options.useFileTimestampFallback || false,
+      ...options
+    };
     
     // Formats that work well with piexifjs
     this.piexifFormats = new Set(['.jpg', '.jpeg', '.tiff', '.tif']);
@@ -50,7 +54,40 @@ class ExifService {
         return await this.extractWithExiftool(filePath);
       }
     } catch (error) {
-      this.logger.warn(`Failed to extract metadata from ${filePath}: ${error.message}`);
+      const errorMessage = error.message || error.toString() || 'Unknown EXIF error';
+      this.logger.error(`Failed to extract metadata from ${filePath}`, {
+        error: errorMessage,
+        stack: error.stack,
+        filePath,
+        extension,
+        attemptedMethod: this.exiftoolFormats.has(extension) ? 'exiftool' : 
+                        this.piexifFormats.has(extension) ? 'piexif' : 
+                        this.sharpFormats.has(extension) ? 'sharp' : 'fallback',
+        stage: 'metadata_extraction'
+      });
+      
+      // Try file timestamp fallback if enabled and no EXIF timestamp found
+      if (this.options.useFileTimestampFallback) {
+        try {
+          const stats = await stat(filePath);
+          const fileTimestamp = stats.mtime;
+          
+          this.logger.debug(`Using file timestamp fallback for ${filePath}: ${fileTimestamp}`);
+          
+          return {
+            hasGPS: false,
+            latitude: null,
+            longitude: null,
+            timestamp: fileTimestamp,
+            camera: { make: null, model: null, lens: null },
+            format: extension,
+            source: 'file_timestamp'
+          };
+        } catch (statError) {
+          this.logger.debug(`File timestamp fallback failed for ${filePath}: ${statError.message}`);
+        }
+      }
+      
       return this.createEmptyMetadata();
     }
   }
@@ -67,14 +104,29 @@ class ExifService {
       
       const exifData = piexif.load(imageString);
       
-      return {
+      const metadata = {
         hasGPS: this.hasGPSData(exifData),
         latitude: this.extractLatitude(exifData),
         longitude: this.extractLongitude(exifData),
         timestamp: this.extractTimestamp(exifData),
         camera: this.extractCameraInfo(exifData),
-        format: extname(filePath).toLowerCase()
+        format: extname(filePath).toLowerCase(),
+        source: 'piexif'
       };
+      
+      // Try file timestamp fallback if no EXIF timestamp and fallback is enabled
+      if (!metadata.timestamp && this.options.useFileTimestampFallback) {
+        try {
+          const stats = await stat(filePath);
+          metadata.timestamp = stats.mtime;
+          metadata.source = 'file_timestamp_fallback';
+          this.logger.debug(`Using file timestamp fallback for ${filePath}: ${stats.mtime}`);
+        } catch (statError) {
+          this.logger.debug(`File timestamp fallback failed for ${filePath}: ${statError.message}`);
+        }
+      }
+      
+      return metadata;
       
     } catch (error) {
       this.logger.debug(`Piexif extraction failed for ${filePath}: ${error.message}`);
@@ -91,7 +143,7 @@ class ExifService {
     try {
       const tags = await exiftool.read(filePath);
       
-      return {
+      const metadata = {
         hasGPS: !!(tags.GPSLatitude && tags.GPSLongitude),
         latitude: tags.GPSLatitude || null,
         longitude: tags.GPSLongitude || null,
@@ -101,8 +153,23 @@ class ExifService {
           model: tags.Model || null,
           lens: tags.LensModel || null
         },
-        format: extname(filePath).toLowerCase()
+        format: extname(filePath).toLowerCase(),
+        source: 'exiftool'
       };
+      
+      // Try file timestamp fallback if no EXIF timestamp and fallback is enabled
+      if (!metadata.timestamp && this.options.useFileTimestampFallback) {
+        try {
+          const stats = await stat(filePath);
+          metadata.timestamp = stats.mtime;
+          metadata.source = 'file_timestamp_fallback';
+          this.logger.debug(`Using file timestamp fallback for ${filePath}: ${stats.mtime}`);
+        } catch (statError) {
+          this.logger.debug(`File timestamp fallback failed for ${filePath}: ${statError.message}`);
+        }
+      }
+      
+      return metadata;
       
     } catch (error) {
       this.logger.debug(`Exiftool extraction failed for ${filePath}: ${error.message}`);
@@ -125,7 +192,7 @@ class ExifService {
         return await this.extractWithExiftool(filePath);
       }
       
-      return {
+      const result = {
         hasGPS: false,
         latitude: null,
         longitude: null,
@@ -135,8 +202,23 @@ class ExifService {
           model: null,
           lens: null
         },
-        format: extname(filePath).toLowerCase()
+        format: extname(filePath).toLowerCase(),
+        source: 'sharp'
       };
+      
+      // Try file timestamp fallback if enabled
+      if (this.options.useFileTimestampFallback) {
+        try {
+          const stats = await stat(filePath);
+          result.timestamp = stats.mtime;
+          result.source = 'file_timestamp_fallback';
+          this.logger.debug(`Using file timestamp fallback for ${filePath}: ${stats.mtime}`);
+        } catch (statError) {
+          this.logger.debug(`File timestamp fallback failed for ${filePath}: ${statError.message}`);
+        }
+      }
+      
+      return result;
       
     } catch (error) {
       this.logger.debug(`Sharp extraction failed for ${filePath}: ${error.message}`);
@@ -163,8 +245,18 @@ class ExifService {
         return await this.writeGPSWithExiftool(filePath, coordinates);
       }
     } catch (error) {
-      this.logger.error(`Failed to write GPS data to ${filePath}: ${error.message}`);
-      throw error;
+      const errorMessage = error.message || error.toString() || 'Unknown GPS write error';
+      this.logger.error(`Failed to write GPS data to ${filePath}`, {
+        error: errorMessage,
+        stack: error.stack,
+        filePath,
+        extension,
+        coordinates,
+        attemptedMethod: this.exiftoolFormats.has(extension) ? 'exiftool' : 
+                        this.piexifFormats.has(extension) ? 'piexif' : 'fallback',
+        stage: 'gps_write'
+      });
+      throw new Error(`GPS write failed for ${filePath}: ${errorMessage}`);
     }
   }
 
@@ -287,22 +379,34 @@ class ExifService {
   extractTimestamp(exifData) {
     // Try different timestamp fields in order of preference
     const timestampFields = [
-      exifData.Exif[piexif.ExifIFD.DateTimeOriginal],
-      exifData.Exif[piexif.ExifIFD.DateTime],
-      exifData['0th'][piexif.ImageIFD.DateTime]
+      exifData.Exif?.[piexif.ExifIFD.DateTimeOriginal],
+      exifData.Exif?.[piexif.ExifIFD.DateTime],
+      exifData['0th']?.[piexif.ImageIFD.DateTime]
     ];
     
     for (const timestamp of timestampFields) {
-      if (timestamp) {
+      if (timestamp && typeof timestamp === 'string') {
         try {
           // EXIF timestamp format: "YYYY:MM:DD HH:MM:SS"
-          const dateStr = timestamp.replace(/:/g, '-', 2).replace(/-/g, ':', 2);
-          return new Date(dateStr);
+          // Replace first two colons with dashes for ISO format
+          const dateStr = timestamp.replace(/^(\d{4}):(\d{2}):(\d{2})/, '$1-$2-$3');
+          const parsedDate = new Date(dateStr);
+          
+          // Validate the parsed date
+          if (!isNaN(parsedDate.getTime()) && parsedDate.getFullYear() > 1900) {
+            return parsedDate;
+          } else {
+            this.logger.debug(`Invalid parsed date from timestamp: ${timestamp} -> ${dateStr} -> ${parsedDate}`);
+          }
         } catch (error) {
-          this.logger.debug(`Failed to parse timestamp: ${timestamp}`);
+          this.logger.debug(`Failed to parse timestamp: ${timestamp}`, error.message);
         }
       }
     }
+    
+    this.logger.debug('No valid timestamp found in EXIF data', {
+      availableFields: timestampFields.filter(Boolean)
+    });
     
     return null;
   }
@@ -411,7 +515,8 @@ class ExifService {
         model: null,
         lens: null
       },
-      format: null
+      format: null,
+      source: 'empty'
     };
   }
 

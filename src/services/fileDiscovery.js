@@ -20,7 +20,7 @@ class FileDiscoveryService {
     // Supported image formats based on PRD specifications
     this.supportedFormats = new Set([
       // Standard formats
-      '.jpg', '.jpeg', '.tiff', '.tif', '.png', '.webp', '.avif', '.heif', '.heic',
+      '.jpg', '.jpeg', '.tiff', '.tif', '.png', '.webp', '.avif', '.heif', '.heic', '.hif',
       // RAW formats
       '.dng', '.cr2', '.cr3', '.nef', '.arw', '.orf', '.rw2', '.raf', '.pef', '.srw'
     ]);
