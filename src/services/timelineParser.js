@@ -7,7 +7,8 @@
  * @author Tom Cranstoun <ddttom@github.com>
  */
 
-import { readFile, writeFile, existsSync } from 'fs/promises';
+import { readFile, writeFile } from 'fs/promises';
+import { existsSync } from 'fs';
 import { join } from 'path';
 
 /**

@@ -7,7 +7,8 @@
  * @author Tom Cranstoun <ddttom@github.com>
  */
 
-import { writeFile, readFile, existsSync } from 'fs/promises';
+import { writeFile, readFile } from 'fs/promises';
+import { existsSync } from 'fs';
 import { join } from 'path';
 import sqlite3 from 'sqlite3';
 import { validateCoordinates } from '../utils/coordinates.js';
@@ -137,9 +138,10 @@ class GeolocationDatabaseService {
    * @param {Object} coordinates - GPS coordinates
    * @param {string} source - Source of coordinates
    * @param {Object} metadata - Additional metadata
+   * @param {Date} originalTimestamp - Original image timestamp (optional, defaults to current time)
    * @returns {Promise<boolean>} Success status
    */
-  async storeCoordinates(filePath, coordinates, source, metadata = {}) {
+  async storeCoordinates(filePath, coordinates, source, metadata = {}, originalTimestamp = null) {
     try {
       // Validate coordinates
       if (this.config.validateCoordinates) {
@@ -158,6 +160,9 @@ class GeolocationDatabaseService {
         return false;
       }
       
+      // Use original timestamp if provided, otherwise fall back to current time
+      const timestampToUse = originalTimestamp || new Date();
+      
       // Store in memory
       const record = {
         latitude: coordinates.latitude,
@@ -165,7 +170,7 @@ class GeolocationDatabaseService {
         source,
         accuracy: coordinates.accuracy || metadata.accuracy || null,
         confidence: coordinates.confidence || metadata.confidence || null,
-        timestamp: new Date()
+        timestamp: timestampToUse
       };
       
       this.inMemoryDb.set(filePath, record);
@@ -175,7 +180,7 @@ class GeolocationDatabaseService {
         await this.storeSQLite(filePath, record);
       }
       
-      this.logger.debug(`Stored coordinates for ${filePath} from ${source}`);
+      this.logger.debug(`Stored coordinates for ${filePath} from ${source} with timestamp ${timestampToUse.toISOString()}`);
       return true;
       
     } catch (error) {

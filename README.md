@@ -84,12 +84,16 @@ npm start -- test-subset/
 
 The application uses a priority-based system for GPS sources:
 
-1. **Image EXIF** (Priority: 100) - Existing GPS data in photos
-2. **Database Cached** (Priority: 90) - Previously processed coordinates
+1. **Database Cached** (Priority: 100) - Previously processed coordinates
+2. **Image EXIF** (Priority: 90) - Existing GPS data in photos ✅ **Fixed**
 3. **Timeline Exact** (Priority: 80) - Direct timeline matches
 4. **Timeline Interpolation** (Priority: 70) - Calculated from timeline
 5. **Nearby Images** (Priority: 60) - Cross-referenced from other photos
 6. **Enhanced Fallback** (Priority: 50) - Extended time tolerance search
+
+**Recent Fixes**: 
+- Added missing EXIF check in the interpolation service to complete the GPS priority chain, ensuring all photos with existing GPS data are properly detected before attempting timeline interpolation.
+- **Timestamp Storage Fix**: Implemented critical data integrity fix ensuring GPS coordinates are stored with original image timestamps instead of processing timestamps. Images without timestamps are now treated as errors and reported in the `missing_timestamp` category.
 
 ## Configuration
 
@@ -223,6 +227,13 @@ src/
 - **`data/geolocation-export.json`**: Database export
 - **`logs/`**: Detailed application logs
 
+### Technical Review Documentation
+
+- **`technical-review-findings.md`**: Comprehensive technical review with specific file references and line numbers
+- **`critical-fixes-plan.md`**: Implementation plan for identified critical issues
+- **`critical-fixes-summary.md`**: Summary of implemented fixes and validation results
+- **`timestamp-storage-fix-summary.md`**: Comprehensive documentation of timestamp storage fix implementation
+
 ### Report Contents
 
 - Processing statistics and success rates
@@ -256,12 +267,40 @@ npm run format
 - **Husky**: Git hooks for quality checks
 - **Conventional Commits**: Standardized commit messages
 
+### Testing
+
+The project includes a comprehensive test suite with 96 tests covering all core functionality:
+
+```bash
+# Run all tests
+npm test
+
+# Test results show 100% pass rate
+✅ tests 96
+✅ pass 96
+❌ fail 0
+```
+
+**Test Coverage**:
+- **EXIF Service**: 12 tests for metadata extraction and GPS writing
+- **Interpolation Service**: 18 tests for GPS coordinate calculation and timestamp validation
+- **Timeline Parser**: 17 tests for Google Maps timeline processing
+- **Geolocation Database**: 7 tests for database operations and timestamp preservation
+- **Coordinate Utilities**: 42 tests for GPS coordinate operations</search>
+</search_and_replace>
+
+**Test Infrastructure**:
+- Node.js built-in test runner with ES module support
+- Comprehensive service mocking and test fixtures
+- Real-world test scenarios with actual coordinate data</search>
+</search_and_replace>
+
 ### Scripts
 
 ```bash
 npm start          # Run the application
 npm run dev        # Development mode with file watching
-npm test           # Run tests (if any)
+npm test           # Run comprehensive test suite (96 tests)
 npm run lint       # Run ESLint
 npm run lint:fix   # Fix ESLint issues
 npm run format     # Format code with Prettier

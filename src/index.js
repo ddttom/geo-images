@@ -252,6 +252,12 @@ class GeoImagesApp {
   async processBatch(batch) {
     const promises = batch.map(async (imageData) => {
       try {
+        // Check if image has a valid timestamp before attempting GPS processing
+        if (!imageData.timestamp) {
+          this.statistics.recordFailure('missing_timestamp', imageData.filePath, 'Image has no timestamp - GPS processing skipped');
+          return;
+        }
+        
         // Try to get GPS coordinates through interpolation
         const coordinates = await this.interpolation.interpolateCoordinates(
           imageData.timestamp,
@@ -269,11 +275,13 @@ class GeoImagesApp {
           // Write GPS data to image
           await this.exifService.writeGPSData(imageData.filePath, coordinates);
           
-          // Store in database
+          // Store in database with original image timestamp
           await this.geolocationDb.storeCoordinates(
             imageData.filePath,
             coordinates,
-            'interpolation'
+            'interpolation',
+            {}, // metadata
+            imageData.timestamp // original image timestamp
           );
           
           this.statistics.recordSuccess('interpolation', imageData.filePath);
@@ -282,8 +290,13 @@ class GeoImagesApp {
         }
         
       } catch (error) {
-        this.logger.error(`Failed to process ${imageData.filePath}:`, error.message);
-        this.statistics.recordFailure('processing', imageData.filePath, error.message);
+        // Handle timestamp validation errors specifically
+        if (error.message.includes('Missing timestamp')) {
+          this.statistics.recordFailure('missing_timestamp', imageData.filePath, error.message);
+        } else {
+          this.logger.error(`Failed to process ${imageData.filePath}:`, error.message);
+          this.statistics.recordFailure('processing', imageData.filePath, error.message);
+        }
       }
     });
     

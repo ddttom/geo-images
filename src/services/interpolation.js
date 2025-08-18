@@ -64,13 +64,13 @@ class InterpolationService {
    */
   async interpolateCoordinates(timestamp, filePath) {
     if (!timestamp) {
-      this.logger.debug(`No timestamp available for ${filePath}`);
-      return null;
+      this.logger.error(`No timestamp available for ${filePath} - GPS processing skipped`);
+      throw new Error('Missing timestamp - GPS processing requires valid image timestamp');
     }
 
     this.logger.debug(`Interpolating coordinates for ${filePath} at ${timestamp.toISOString()}`);
 
-    // Priority chain: Database → Timeline → Nearby Images → Enhanced Fallback
+    // Priority chain: Database → EXIF → Timeline → Nearby Images → Enhanced Fallback
     let result = null;
 
     // 1. Check geolocation database first (cached data)
@@ -82,7 +82,32 @@ class InterpolationService {
       }
     }
 
-    // 2. Timeline interpolation (primary method)
+    // 2. Direct EXIF extraction check (existing GPS data)
+    if (!result) {
+      try {
+        // We need to import the EXIF service dynamically to avoid circular dependencies
+        const ExifService = (await import('./exif.js')).default;
+        const exifService = new ExifService(this.logger);
+        
+        const exifData = await exifService.extractMetadata(filePath);
+        if (exifData.hasGPS && exifData.latitude && exifData.longitude) {
+          result = {
+            latitude: exifData.latitude,
+            longitude: exifData.longitude,
+            source: 'image_exif',
+            method: 'direct',
+            confidence: 1.0, // High confidence for existing EXIF data
+            accuracy: null
+          };
+          this.logger.debug(`Found existing GPS data in EXIF for ${filePath}`);
+          return result;
+        }
+      } catch (error) {
+        this.logger.debug(`EXIF extraction failed for ${filePath}: ${error.message}`);
+      }
+    }
+
+    // 3. Timeline interpolation (primary method)
     result = this.interpolateFromTimeline(timestamp);
     if (result) {
       this.logger.debug(`Timeline interpolation successful for ${filePath}`);
@@ -93,7 +118,7 @@ class InterpolationService {
       };
     }
 
-    // 3. Nearby images cross-referencing
+    // 4. Nearby images cross-referencing
     result = this.interpolateFromNearbyImages(timestamp);
     if (result) {
       this.logger.debug(`Nearby image interpolation successful for ${filePath}`);
@@ -104,7 +129,7 @@ class InterpolationService {
       };
     }
 
-    // 4. Enhanced fallback with progressive search
+    // 5. Enhanced fallback with progressive search
     if (this.config.enhancedFallback?.enabled) {
       result = this.enhancedFallbackInterpolation(timestamp);
       if (result) {

@@ -1,0 +1,55 @@
+{
+  "timelineObjects": [
+    {
+      "activitySegment": {
+        "startLocation": {
+          "latitudeE7": 407128000,
+          "longitudeE7": -740060000,
+          "accuracy": 10
+        },
+        "endLocation": {
+          "latitudeE7": 407589000,
+          "longitudeE7": -739851000,
+          "accuracy": 15
+        },
+        "duration": {
+          "startTimestamp": "2024-01-15T12:00:00Z",
+          "endTimestamp": "2024-01-15T14:00:00Z"
+        },
+        "activityType": "WALKING"
+      }
+    },
+    {
+      "placeVisit": {
+        "location": {
+          "latitudeE7": 407128000,
+          "longitudeE7": -740060000,
+          "accuracy": 5
+        },
+        "duration": {
+          "startTimestamp": "2024-01-15T10:00:00Z",
+          "endTimestamp": "2024-01-15T12:00:00Z"
+        }
+      }
+    },
+    {
+      "activitySegment": {
+        "startLocation": {
+          "latitudeE7": 407589000,
+          "longitudeE7": -739851000,
+          "accuracy": 12
+        },
+        "endLocation": {
+          "latitudeE7": 408776000,
+          "longitudeE7": -741240000,
+          "accuracy": 8
+        },
+        "duration": {
+          "startTimestamp": "2024-01-15T14:00:00Z",
+          "endTimestamp": "2024-01-15T16:00:00Z"
+        },
+        "activityType": "IN_VEHICLE"
+      }
+    }
+  ]
+}
