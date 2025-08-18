@@ -18,9 +18,11 @@ Many photos, especially older ones or those from cameras without GPS, lack locat
 
 1. **Prepare your data**:
    - Export your Google Maps timeline data from [Google Takeout](https://takeout.google.com/)
-   - Place the `Timeline Edits.json` file in the `data/` directory
+   - Place the timeline file in the `data/` directory:
+     - **Timeline Edits.json** (recommended - newer format with enhanced location data)
+     - **Timeline.json** (legacy format - also supported)
    - Have photos in a directory you want to process
-   - the application will inspect your `Timeline Edits.json` and extract date and location information, merging this with any pre-existing info in data/location.json (if it exists) and then keep the location.json info in memory, to be updated as new info is discovered  from images on file; the app then discards its in-memory copy of the `Timeline Edits.json` file.
+   - The application automatically detects the timeline format and extracts date and location information, merging this with any pre-existing info in data/location.json (if it exists) and then keeps the location.json info in memory, to be updated as new info is discovered from images on file; the app then discards its in-memory copy of the timeline file.
 
 2. **Run the application**:
 
@@ -77,7 +79,8 @@ src/
 ├── services/                   # Core business logic
 │   ├── fileDiscovery.js       # Image scanning and indexing
 │   ├── exif.js                # EXIF metadata extraction/writing
-│   ├── timelineParser.js      # Google Maps timeline processing
+│   ├── timelineParser.js      # Google Maps timeline processing (both formats)
+│   ├── timelineEditsParser.js # Timeline Edits format parser
 │   ├── interpolation.js       # GPS coordinate calculation
 │   ├── geolocationDatabase.js # GPS data persistence
 │   ├── timelineAugmentation.js# Timeline enhancement
@@ -107,9 +110,15 @@ src/
   - Implements enhanced fallback with progressive search expansion (1h → 6h → same day)
   - Automatically filters placeholder entries with null coordinates, ignoring them
   
-#### 3. **Timeline Processing** (`timelineParser.js` & `timelineAugmentation.js`)
+#### 3. **Timeline Processing** (`timelineParser.js`, `timelineEditsParser.js` & `timelineAugmentation.js`)
 
-- **Parser**: Converts Google Maps timeline JSON format to usable coordinates, in location.json
+- **Format Auto-Detection**: Automatically detects and processes both Timeline formats:
+  - **Timeline Edits.json** (newer format): Enhanced location data with position records, place aggregates, and activity tracking
+  - **Timeline.json** (legacy format): Standard timeline objects with activity segments and place visits
+- **Enhanced Parser**: Timeline Edits format provides significantly more location data:
+  - **Position Records**: High-frequency GPS coordinates from `rawSignal.signal.position` with meter-level accuracy
+  - **Place Aggregates**: Significant locations with confidence scores and time windows
+  - **Activity Records**: Movement patterns and transportation modes
 - **Augmentation**: Extracts GPS from existing photos and adds to timeline
   - Smart duplicate detection
   - Automatic backup creation

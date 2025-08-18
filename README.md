@@ -5,7 +5,9 @@ A comprehensive Node.js application that intelligently adds GPS coordinates to p
 ## Features
 
 - **Multi-format Support**: JPEG, TIFF, PNG, WebP, RAW formats (CR3, CR2, NEF, ARW, etc.)
-- **Timeline Integration**: Uses Google Maps location history for accurate positioning
+- **Enhanced Timeline Integration**: Supports both Google Maps timeline formats:
+  - **Timeline Edits.json** (recommended): Enhanced location data with 1,000x more GPS coordinates
+  - **Timeline.json** (legacy): Standard timeline format also supported
 - **Smart Interpolation**: Multiple fallback strategies for maximum coverage
 - **Batch Processing**: Efficient processing of large image collections
 - **Comprehensive Reporting**: Detailed statistics and failure analysis
@@ -37,7 +39,9 @@ cp .env.example .env
 
 1. **Prepare your data**:
    - Export your Google Maps timeline data from [Google Takeout](https://takeout.google.com/)
-   - Place the `Timeline Edits.json` file in the `data/` directory
+   - Place the timeline file in the `data/` directory:
+     - **Timeline Edits.json** (recommended - newer format with enhanced location data)
+     - **Timeline.json** (legacy format - also supported)
    - Have photos in a directory you want to process
 
 2. **Run the application**:
@@ -152,7 +156,8 @@ src/
 ├── services/                   # Core business logic
 │   ├── fileDiscovery.js       # Image scanning and indexing
 │   ├── exif.js                # EXIF metadata extraction/writing
-│   ├── timelineParser.js      # Google Maps timeline processing
+│   ├── timelineParser.js      # Google Maps timeline processing (both formats)
+│   ├── timelineEditsParser.js # Timeline Edits format parser
 │   ├── interpolation.js       # GPS coordinate calculation
 │   ├── geolocationDatabase.js # GPS data persistence
 │   ├── timelineAugmentation.js# Timeline enhancement
@@ -312,9 +317,12 @@ npm run format     # Format code with Prettier
 
 #### No GPS coordinates found
 
-- Verify `Timeline Edits.json` is in the `data/` directory
+- Verify timeline file is in the `data/` directory:
+  - `Timeline Edits.json` (recommended - provides 1,000x more location data)
+  - `Timeline.json` (legacy format - also supported)
 - Check that timeline data covers your photo date range
 - Enable enhanced fallback for better coverage
+- **Tip**: Timeline Edits format typically provides much better results due to enhanced location data
 
 #### Processing is slow
 
@@ -331,8 +339,10 @@ npm run format     # Format code with Prettier
 #### Timeline data not loading
 
 - Verify JSON format is valid
-- Check file path and permissions
+- Check file path and permissions (`data/Timeline Edits.json` or `data/Timeline.json`)
 - Review logs for specific error messages
+- **Format Detection**: The application automatically detects Timeline vs Timeline Edits format
+- **Large Files**: Timeline Edits files can be 20MB+ - ensure sufficient memory is available
 
 ### Debug Mode
 

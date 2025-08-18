@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Enhanced Timeline Edits Format Support**: Complete support for Timeline Edits.json format with 1,000x more location data
+- **Timeline Format Auto-Detection**: Automatic detection and processing of both Timeline.json and Timeline Edits.json formats
+- **Position Records Parser**: Extraction of high-frequency GPS coordinates from rawSignal.signal.position with meter-level accuracy
+- **Comprehensive Timeline Diagnostic Tool**: Standalone CLI utility for analyzing timeline files and troubleshooting format issues
 - Initial release of Geo Images application
 - Comprehensive GPS coordinate processing for photos
 - Multi-format image support (JPEG, RAW, PNG, WebP, etc.)
@@ -29,7 +33,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **File Discovery Service**: Recursive directory scanning with format detection
 - **EXIF Service**: Metadata extraction and GPS writing with piexifjs and exiftool
-- **Timeline Parser**: Google Maps timeline data processing and management
+- **Timeline Parser**: Google Maps timeline data processing with dual format support (Timeline.json and Timeline Edits.json)
+- **Timeline Edits Parser**: Specialized parser for Timeline Edits format with position records, place aggregates, and activity tracking
 - **Interpolation Engine**: Multiple GPS coordinate calculation methods
 - **Geolocation Database**: Priority-based GPS source management
 - **Timeline Augmentation**: Enhancement of timeline data with image GPS
