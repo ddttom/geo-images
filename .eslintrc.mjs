@@ -1,4 +1,4 @@
-module.exports = {
+export default {
   env: {
     es2022: true,
     node: true,
