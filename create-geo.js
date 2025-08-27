@@ -259,6 +259,293 @@ class CreateGeoScanner {
   }
 
   /**
+   * Generate comprehensive analysis report of the geographical data array
+   */
+  generateDataAnalysisReport(dataArray) {
+    try {
+      // Handle edge case: empty array
+      if (!dataArray || dataArray.length === 0) {
+        return {
+          isEmpty: true,
+          totalEntries: 0,
+          error: 'No geographical data entries found in the dataset'
+        };
+      }
+
+      // Ensure array is properly sorted by datetime in ascending order
+      const sortedData = [...dataArray].sort((a, b) => {
+        const dateA = new Date(a.timestamp || a.datetime);
+        const dateB = new Date(b.timestamp || b.datetime);
+        return dateA.getTime() - dateB.getTime();
+      });
+
+      // Validate datetime formats and filter out invalid entries
+      const validEntries = [];
+      const invalidEntries = [];
+
+      for (const entry of sortedData) {
+        const timestamp = entry.timestamp || entry.datetime;
+        const date = new Date(timestamp);
+        
+        if (isNaN(date.getTime()) || !timestamp) {
+          invalidEntries.push({
+            entry,
+            reason: 'Invalid or missing datetime format'
+          });
+        } else {
+          validEntries.push({
+            ...entry,
+            parsedDate: date,
+            timestamp: timestamp
+          });
+        }
+      }
+
+      // Handle case where all entries have invalid datetimes
+      if (validEntries.length === 0) {
+        return {
+          isEmpty: false,
+          totalEntries: dataArray.length,
+          validEntries: 0,
+          invalidEntries: invalidEntries.length,
+          error: 'All entries have invalid datetime formats',
+          invalidDatetimeDetails: invalidEntries.slice(0, 5) // Show first 5 invalid entries
+        };
+      }
+
+      // Find earliest and latest entries
+      const earliestEntry = validEntries[0];
+      const latestEntry = validEntries[validEntries.length - 1];
+
+      // Calculate time span
+      const timeSpanMs = latestEntry.parsedDate.getTime() - earliestEntry.parsedDate.getTime();
+      const timeSpanDays = Math.floor(timeSpanMs / (1000 * 60 * 60 * 24));
+      const timeSpanHours = Math.floor((timeSpanMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+      const timeSpanMinutes = Math.floor((timeSpanMs % (1000 * 60 * 60)) / (1000 * 60));
+
+      // Calculate geographical bounds
+      const latitudes = validEntries.map(e => parseFloat(e.latitude)).filter(lat => !isNaN(lat));
+      const longitudes = validEntries.map(e => parseFloat(e.longitude)).filter(lng => !isNaN(lng));
+
+      const geoBounds = {
+        north: Math.max(...latitudes),
+        south: Math.min(...latitudes),
+        east: Math.max(...longitudes),
+        west: Math.min(...longitudes)
+      };
+
+      // Analyze data sources
+      const sourceCounts = {};
+      validEntries.forEach(entry => {
+        const source = entry.source || 'unknown';
+        sourceCounts[source] = (sourceCounts[source] || 0) + 1;
+      });
+
+      // Analyze temporal distribution
+      const yearCounts = {};
+      const monthCounts = {};
+      validEntries.forEach(entry => {
+        const year = entry.parsedDate.getFullYear();
+        const month = entry.parsedDate.getMonth() + 1;
+        
+        yearCounts[year] = (yearCounts[year] || 0) + 1;
+        monthCounts[month] = (monthCounts[month] || 0) + 1;
+      });
+
+      return {
+        isEmpty: false,
+        totalEntries: dataArray.length,
+        validEntries: validEntries.length,
+        invalidEntries: invalidEntries.length,
+        
+        // Temporal analysis
+        earliestEntry: {
+          timestamp: earliestEntry.timestamp,
+          latitude: earliestEntry.latitude,
+          longitude: earliestEntry.longitude,
+          source: earliestEntry.source,
+          filePath: earliestEntry.filePath
+        },
+        latestEntry: {
+          timestamp: latestEntry.timestamp,
+          latitude: latestEntry.latitude,
+          longitude: latestEntry.longitude,
+          source: latestEntry.source,
+          filePath: latestEntry.filePath
+        },
+        timeSpan: {
+          totalMs: timeSpanMs,
+          days: timeSpanDays,
+          hours: timeSpanHours,
+          minutes: timeSpanMinutes,
+          formatted: `${timeSpanDays} days, ${timeSpanHours} hours, ${timeSpanMinutes} minutes`
+        },
+        
+        // Geographical analysis
+        geographicalBounds: geoBounds,
+        geographicalSpan: {
+          latitudeRange: geoBounds.north - geoBounds.south,
+          longitudeRange: geoBounds.east - geoBounds.west
+        },
+        
+        // Data source analysis
+        dataSources: sourceCounts,
+        
+        // Temporal distribution
+        temporalDistribution: {
+          byYear: yearCounts,
+          byMonth: monthCounts
+        },
+        
+        // Data quality metrics
+        dataQuality: {
+          validDatetimePercentage: ((validEntries.length / dataArray.length) * 100).toFixed(2),
+          hasGeographicalData: latitudes.length > 0 && longitudes.length > 0,
+          averageAccuracy: validEntries.reduce((sum, e) => sum + (parseFloat(e.accuracy) || 0), 0) / validEntries.length
+        },
+        
+        // Error details for invalid entries (first 5)
+        invalidDatetimeDetails: invalidEntries.slice(0, 5)
+      };
+
+    } catch (error) {
+      this.logger.error('Error generating data analysis report:', error);
+      return {
+        error: `Failed to analyze data: ${error.message}`,
+        totalEntries: dataArray ? dataArray.length : 0
+      };
+    }
+  }
+
+  /**
+   * Display comprehensive data analysis report in a formatted manner
+   */
+  displayDataAnalysisReport(analysis) {
+    console.log('\n' + '='.repeat(80));
+    console.log('📊 COMPREHENSIVE GEOGRAPHICAL DATA ANALYSIS REPORT');
+    console.log('='.repeat(80));
+
+    // Handle error cases
+    if (analysis.error) {
+      console.log(`\n❌ Analysis Error: ${analysis.error}`);
+      if (analysis.totalEntries > 0) {
+        console.log(`📈 Total Entries: ${analysis.totalEntries}`);
+      }
+      if (analysis.invalidDatetimeDetails && analysis.invalidDatetimeDetails.length > 0) {
+        console.log('\n🔍 Sample Invalid Entries:');
+        analysis.invalidDatetimeDetails.forEach((invalid, index) => {
+          console.log(`   ${index + 1}. ${invalid.reason}`);
+          if (invalid.entry.filePath) {
+            console.log(`      File: ${invalid.entry.filePath}`);
+          }
+        });
+      }
+      return;
+    }
+
+    // Handle empty dataset
+    if (analysis.isEmpty) {
+      console.log('\n📭 Dataset is empty - no geographical data entries found');
+      return;
+    }
+
+    // Dataset overview
+    console.log('\n📈 DATASET OVERVIEW');
+    console.log('-'.repeat(40));
+    console.log(`Total Entries: ${analysis.totalEntries.toLocaleString()}`);
+    console.log(`Valid Entries: ${analysis.validEntries.toLocaleString()} (${analysis.dataQuality.validDatetimePercentage}%)`);
+    if (analysis.invalidEntries > 0) {
+      console.log(`Invalid Entries: ${analysis.invalidEntries.toLocaleString()}`);
+    }
+
+    // Temporal analysis
+    console.log('\n⏰ TEMPORAL ANALYSIS');
+    console.log('-'.repeat(40));
+    
+    if (analysis.earliestEntry && analysis.latestEntry) {
+      console.log(`📅 Earliest Entry: ${new Date(analysis.earliestEntry.timestamp).toLocaleString()}`);
+      console.log(`   📍 Location: ${analysis.earliestEntry.latitude}, ${analysis.earliestEntry.longitude}`);
+      console.log(`   📂 Source: ${analysis.earliestEntry.source}`);
+      if (analysis.earliestEntry.filePath) {
+        console.log(`   📁 File: ${analysis.earliestEntry.filePath.split('/').pop()}`);
+      }
+      
+      console.log(`\n📅 Latest Entry: ${new Date(analysis.latestEntry.timestamp).toLocaleString()}`);
+      console.log(`   📍 Location: ${analysis.latestEntry.latitude}, ${analysis.latestEntry.longitude}`);
+      console.log(`   📂 Source: ${analysis.latestEntry.source}`);
+      if (analysis.latestEntry.filePath) {
+        console.log(`   📁 File: ${analysis.latestEntry.filePath.split('/').pop()}`);
+      }
+      
+      console.log(`\n⏱️  Time Span: ${analysis.timeSpan.formatted}`);
+      console.log(`   Total Duration: ${(analysis.timeSpan.totalMs / (1000 * 60 * 60 * 24)).toFixed(1)} days`);
+    }
+
+    // Geographical analysis
+    if (analysis.dataQuality.hasGeographicalData) {
+      console.log('\n🌍 GEOGRAPHICAL ANALYSIS');
+      console.log('-'.repeat(40));
+      console.log(`Northern Boundary: ${analysis.geographicalBounds.north.toFixed(6)}°`);
+      console.log(`Southern Boundary: ${analysis.geographicalBounds.south.toFixed(6)}°`);
+      console.log(`Eastern Boundary: ${analysis.geographicalBounds.east.toFixed(6)}°`);
+      console.log(`Western Boundary: ${analysis.geographicalBounds.west.toFixed(6)}°`);
+      console.log(`Latitude Range: ${analysis.geographicalSpan.latitudeRange.toFixed(6)}°`);
+      console.log(`Longitude Range: ${analysis.geographicalSpan.longitudeRange.toFixed(6)}°`);
+    }
+
+    // Data sources
+    console.log('\n📊 DATA SOURCES');
+    console.log('-'.repeat(40));
+    Object.entries(analysis.dataSources)
+      .sort(([,a], [,b]) => b - a)
+      .forEach(([source, count]) => {
+        const percentage = ((count / analysis.validEntries) * 100).toFixed(1);
+        console.log(`${source}: ${count.toLocaleString()} entries (${percentage}%)`);
+      });
+
+    // Temporal distribution
+    console.log('\n📅 TEMPORAL DISTRIBUTION');
+    console.log('-'.repeat(40));
+    
+    const years = Object.entries(analysis.temporalDistribution.byYear)
+      .sort(([a], [b]) => parseInt(a) - parseInt(b));
+    
+    if (years.length > 0) {
+      console.log('By Year:');
+      years.forEach(([year, count]) => {
+        const percentage = ((count / analysis.validEntries) * 100).toFixed(1);
+        console.log(`  ${year}: ${count.toLocaleString()} entries (${percentage}%)`);
+      });
+    }
+
+    // Data quality metrics
+    console.log('\n✅ DATA QUALITY METRICS');
+    console.log('-'.repeat(40));
+    console.log(`Valid Datetime Entries: ${analysis.dataQuality.validDatetimePercentage}%`);
+    console.log(`Geographical Data Available: ${analysis.dataQuality.hasGeographicalData ? 'Yes' : 'No'}`);
+    if (analysis.dataQuality.averageAccuracy > 0) {
+      console.log(`Average Accuracy: ${analysis.dataQuality.averageAccuracy.toFixed(2)}`);
+    }
+
+    // Show invalid entries if any
+    if (analysis.invalidEntries > 0 && analysis.invalidDatetimeDetails.length > 0) {
+      console.log('\n⚠️  INVALID DATETIME ENTRIES (Sample)');
+      console.log('-'.repeat(40));
+      analysis.invalidDatetimeDetails.forEach((invalid, index) => {
+        console.log(`${index + 1}. ${invalid.reason}`);
+        if (invalid.entry.filePath) {
+          console.log(`   File: ${invalid.entry.filePath.split('/').pop()}`);
+        }
+      });
+      if (analysis.invalidEntries > 5) {
+        console.log(`   ... and ${analysis.invalidEntries - 5} more invalid entries`);
+      }
+    }
+
+    console.log('\n' + '='.repeat(80));
+  }
+
+  /**
    * Clean up resources and close connections
    */
   async cleanup() {
@@ -368,6 +655,10 @@ class CreateGeoScanner {
         this.logger.warn('Dataset validation warnings:', validation.errors.slice(0, 5));
       }
       
+      // Generate comprehensive data analysis report
+      const dataAnalysis = this.generateDataAnalysisReport(mergeResult.data);
+      this.displayDataAnalysisReport(dataAnalysis);
+
       // Write data atomically
       await atomicWriteJSON(this.config.locationDataPath, mergeResult.data, {
         backupPath,

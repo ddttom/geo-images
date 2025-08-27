@@ -53,7 +53,7 @@ cp .env.example .env
    ```
 
 3. **Follow the prompts**:
-   - Enter the directory path containing your photos (defaults to `~/pics`)
+   - Enter the directory path containing your photos (defaults to the value configured in `.env` - typically `~/pics`)
    - The program will process images automatically and show progress
 
 ### Command Line Usage
@@ -73,7 +73,7 @@ npm start -- test-subset/
 For extracting GPS metadata from existing image collections without timeline data, use the standalone `create-geo.js` script:
 
 ```bash
-# Scan default ~/pics directory for geo-tagged images
+# Scan default directory (configured in .env) for geo-tagged images
 node create-geo.js
 
 # Scan specific directory
@@ -89,8 +89,155 @@ node create-geo.js --help
 - Extracts GPS coordinates from EXIF metadata in JPEG, PNG, TIFF, RAW, and Canon .cr3 files
 - Updates `data/location.json` with atomic backup/rollback protection
 - Sophisticated duplicate detection using coordinates, timestamps, and file hashes
-- Comprehensive error handling and progress reporting
-- Seamless integration with existing application configuration
+- **Comprehensive data analysis reporting** with temporal and geographical insights
+- **Advanced error handling** for edge cases including empty arrays and invalid datetime formats
+- **Detailed statistics** including earliest/latest entries, time spans, and data quality metrics
+- Seamless integration with existing application configuration</search>
+</search_and_replace>
+
+<search_and_replace>
+<path>README.md</path>
+<search>**Use Cases:**
+
+- Initial GPS data extraction from photo collections
+- Populating location database before timeline processing
+- Auditing existing GPS metadata in image libraries
+- Building comprehensive location datasets from multiple sources</search>
+<replace>**Use Cases:**
+
+- Initial GPS data extraction from photo collections
+- Populating location database before timeline processing
+- Auditing existing GPS metadata in image libraries
+- Building comprehensive location datasets from multiple sources
+- **Temporal analysis** of geographical data with detailed time span calculations
+- **Data quality assessment** with validation reporting and error analysis</search>
+</search_and_replace>
+
+<search_and_replace>
+<path>README.md</path>
+<search>#### **Enhanced Features**
+
+The refactoring has also introduced several enhancements:
+- **Improved Error Handling**: More granular error categorization and reporting
+- **Enhanced Configuration**: Environment variable support and validation
+- **Better CLI Experience**: Improved help system and argument validation
+- **Modular Design**: Utilities can be imported and used by other components
+- **Performance Monitoring**: Detailed timing and efficiency metrics</search>
+<replace>#### **Enhanced Features**
+
+The refactoring has also introduced several enhancements:
+- **Improved Error Handling**: More granular error categorization and reporting
+- **Enhanced Configuration**: Environment variable support and validation
+- **Better CLI Experience**: Improved help system and argument validation
+- **Modular Design**: Utilities can be imported and used by other components
+- **Performance Monitoring**: Detailed timing and efficiency metrics
+- **Comprehensive Data Analysis**: Advanced reporting with temporal distribution, geographical bounds, and data quality metrics
+- **Robust Data Validation**: Edge case handling for empty datasets and invalid datetime formats</search>
+</search_and_replace>
+
+Now I'll update the PRD document:
+
+<search_and_replace>
+<path>docs/prd.md</path>
+<search>**Key Features**:
+
+- Recursive directory traversal for comprehensive coverage
+- Multi-format EXIF extraction (JPEG, PNG, TIFF, RAW, Canon .cr3)
+- Atomic backup/restore for data integrity
+- Sophisticated duplicate detection and validation
+- Integration with existing application services and configuration</search>
+<replace>**Key Features**:
+
+- Recursive directory traversal for comprehensive coverage
+- Multi-format EXIF extraction (JPEG, PNG, TIFF, RAW, Canon .cr3)
+- Atomic backup/restore for data integrity
+- Sophisticated duplicate detection and validation
+- **Comprehensive data analysis and reporting** with temporal and geographical insights
+- **Advanced error handling** for edge cases and invalid data formats
+- **Detailed statistics generation** including time spans, data quality metrics, and distribution analysis
+- Integration with existing application services and configuration</search>
+</search_and_replace>
+
+<search_and_replace>
+<path>docs/prd.md</path>
+<search>#### 5. **Standalone GPS Extraction** (`create-geo.js`)
+
+- **Purpose**: Comprehensive EXIF metadata scanner for extracting GPS data from image collections
+- **Architecture**: Leverages existing FileDiscoveryService and ExifService for consistency
+- **Implementation**:
+  - Recursive directory scanning with multi-format support
+  - Atomic backup/restore operations for data safety
+  - Sophisticated duplicate detection using coordinates, timestamps, and file hashes
+  - Integration with existing logging framework and coordinate validation
+- **Data Management**:
+  - Updates `data/location.json` directly with merge logic
+  - Preserves existing data integrity and chronological ordering
+  - Validates against JSON schema structure with consistent field naming
+- **Use Cases**: Initial GPS extraction, location database population, metadata auditing</search>
+<replace>#### 5. **Standalone GPS Extraction** (`create-geo.js`)
+
+- **Purpose**: Comprehensive EXIF metadata scanner for extracting GPS data from image collections
+- **Architecture**: Leverages existing FileDiscoveryService and ExifService for consistency
+- **Implementation**:
+  - Recursive directory scanning with multi-format support
+  - Atomic backup/restore operations for data safety
+  - Sophisticated duplicate detection using coordinates, timestamps, and file hashes
+  - Integration with existing logging framework and coordinate validation
+  - **Comprehensive data analysis reporting** with temporal and geographical insights
+- **Data Management**:
+  - Updates `data/location.json` directly with merge logic
+  - Preserves existing data integrity and chronological ordering
+  - Validates against JSON schema structure with consistent field naming
+  - **Ensures proper datetime sorting** in ascending order before data persistence
+- **Advanced Reporting**:
+  - **Temporal Analysis**: Identifies earliest and latest datetime entries with associated metadata
+  - **Time Span Calculations**: Computes comprehensive time coverage of the dataset
+  - **Geographical Bounds**: Analyzes spatial distribution and coordinate ranges
+  - **Data Quality Metrics**: Validates datetime formats and provides quality assessments
+  - **Error Handling**: Robust handling of empty arrays and invalid datetime formats
+- **Use Cases**: Initial GPS extraction, location database population, metadata auditing, **temporal data analysis**, **data quality assessment**</search>
+</search_and_replace>
+
+<search_and_replace>
+<path>docs/prd.md</path>
+<search>### Output and Reporting
+
+The application generates comprehensive reports:
+
+**Console Output**: Real-time progress with detailed statistics
+**JSON Export**: Complete processing report (`data/processing-report.json`)
+**Database Export**: Consolidated GPS database (`data/geolocation-export.json`)
+**Location info file**: `data/location.json`
+**Failure Analysis**: Categorized failure reasons with specific recommendations</search>
+<replace>### Output and Reporting
+
+The application generates comprehensive reports:
+
+**Console Output**: Real-time progress with detailed statistics
+**JSON Export**: Complete processing report (`data/processing-report.json`)
+**Database Export**: Consolidated GPS database (`data/geolocation-export.json`)
+**Location info file**: `data/location.json`
+**Failure Analysis**: Categorized failure reasons with specific recommendations
+
+#### **Enhanced Reporting for Standalone GPS Extraction**
+
+The `create-geo.js` script provides advanced data analysis reporting:
+
+**Comprehensive Data Analysis Report**:
+- **Dataset Overview**: Total entries, valid/invalid counts, and data quality percentages
+- **Temporal Analysis**: Earliest and latest datetime entries with full metadata context
+- **Time Span Calculations**: Detailed time coverage including days, hours, and minutes
+- **Geographical Analysis**: Coordinate bounds (north/south/east/west boundaries) and spatial ranges
+- **Data Source Distribution**: Breakdown of GPS sources with counts and percentages
+- **Temporal Distribution**: Analysis by year and month for trend identification
+- **Data Quality Metrics**: Validation results, accuracy averages, and integrity assessments
+- **Error Reporting**: Detailed analysis of invalid datetime formats with sample entries
+
+**Edge Case Handling**:
+- **Empty Dataset Detection**: Graceful handling with appropriate user messaging
+- **Invalid Datetime Validation**: Comprehensive error reporting with specific failure reasons
+- **Data Integrity Checks**: Validation of coordinate formats and bounds checking
+- **Robust Error Recovery**: Continues processing despite individual entry failures
 
 **Use Cases:**
 

@@ -33,7 +33,7 @@ Many photos, especially older ones or those from cameras without GPS, lack locat
    ```
 
 3. **Follow the prompts**:
-   - Enter the directory path containing your photos (defaults to `~/pics`)
+   - Enter the directory path containing your photos (defaults to the value configured in `.env` - typically `~/pics`)
    - The program will process images automatically and show progress
 
 ### Command Line Usage
@@ -53,7 +53,7 @@ npm start -- test-subset/
 The `create-geo.js` script provides standalone GPS metadata extraction capabilities:
 
 ```bash
-# Extract GPS data from default ~/pics directory
+# Extract GPS data from default directory (configured in .env)
 node create-geo.js
 
 # Extract GPS data from specific directory
@@ -71,6 +71,9 @@ node create-geo.js --help
 - Multi-format EXIF extraction (JPEG, PNG, TIFF, RAW, Canon .cr3)
 - Atomic backup/restore for data integrity
 - Sophisticated duplicate detection and validation
+- **Comprehensive data analysis and reporting** with temporal and geographical insights
+- **Advanced error handling** for edge cases and invalid data formats
+- **Detailed statistics generation** including time spans, data quality metrics, and distribution analysis
 - Integration with existing application services and configuration
 
 ### What Happens During Processing
@@ -175,11 +178,19 @@ tools/
   - Atomic backup/restore operations for data safety
   - Sophisticated duplicate detection using coordinates, timestamps, and file hashes
   - Integration with existing logging framework and coordinate validation
+  - **Comprehensive data analysis reporting** with temporal and geographical insights
 - **Data Management**:
   - Updates `data/location.json` directly with merge logic
   - Preserves existing data integrity and chronological ordering
   - Validates against JSON schema structure with consistent field naming
-- **Use Cases**: Initial GPS extraction, location database population, metadata auditing
+  - **Ensures proper datetime sorting** in ascending order before data persistence
+- **Advanced Reporting**:
+  - **Temporal Analysis**: Identifies earliest and latest datetime entries with associated metadata
+  - **Time Span Calculations**: Computes comprehensive time coverage of the dataset
+  - **Geographical Bounds**: Analyzes spatial distribution and coordinate ranges
+  - **Data Quality Metrics**: Validates datetime formats and provides quality assessments
+  - **Error Handling**: Robust handling of empty arrays and invalid datetime formats
+- **Use Cases**: Initial GPS extraction, location database population, metadata auditing, **temporal data analysis**, **data quality assessment**
 
 #### 5. **Performance Optimizations**
 
@@ -303,7 +314,7 @@ this.config = {
 
 **Usage Examples**:
 ```bash
-# Use home directory pics folder (default)
+# Use home directory pics folder (default from .env.example)
 DEFAULT_PHOTO_DIR=~/pics
 
 # Use absolute path
@@ -319,7 +330,7 @@ DEFAULT_PHOTO_DIR=C:\Users\User\Pictures
 **Benefits**:
 - **Flexibility**: Users can configure photo directory via environment variables
 - **Consistency**: Same configuration used across main application and create-geo.js script
-- **Backward Compatibility**: Maintains default `~/pics` behavior if not configured
+- **Backward Compatibility**: Maintains default `~/pics` behavior from `.env.example` if not configured
 - **Path Safety**: Robust path resolution handles edge cases and invalid inputs
 
 ### Output and Reporting
@@ -331,6 +342,26 @@ The application generates comprehensive reports:
 **Database Export**: Consolidated GPS database (`data/geolocation-export.json`)
 **Location info file**: `data/location.json`
 **Failure Analysis**: Categorized failure reasons with specific recommendations
+
+#### **Enhanced Reporting for Standalone GPS Extraction**
+
+The `create-geo.js` script provides advanced data analysis reporting:
+
+**Comprehensive Data Analysis Report**:
+- **Dataset Overview**: Total entries, valid/invalid counts, and data quality percentages
+- **Temporal Analysis**: Earliest and latest datetime entries with full metadata context
+- **Time Span Calculations**: Detailed time coverage including days, hours, and minutes
+- **Geographical Analysis**: Coordinate bounds (north/south/east/west boundaries) and spatial ranges
+- **Data Source Distribution**: Breakdown of GPS sources with counts and percentages
+- **Temporal Distribution**: Analysis by year and month for trend identification
+- **Data Quality Metrics**: Validation results, accuracy averages, and integrity assessments
+- **Error Reporting**: Detailed analysis of invalid datetime formats with sample entries
+
+**Edge Case Handling**:
+- **Empty Dataset Detection**: Graceful handling with appropriate user messaging
+- **Invalid Datetime Validation**: Comprehensive error reporting with specific failure reasons
+- **Data Integrity Checks**: Validation of coordinate formats and bounds checking
+- **Robust Error Recovery**: Continues processing despite individual entry failures
 
 ### Error Handling and Reliability
 
