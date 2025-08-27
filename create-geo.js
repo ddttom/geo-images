@@ -11,82 +11,41 @@
  */
 
 import { fileURLToPath } from 'url';
-import { dirname, join, resolve } from 'path';
-import { readFile, writeFile, copyFile, unlink } from 'fs/promises';
-import { existsSync, mkdirSync } from 'fs';
-import { createHash } from 'crypto';
-import chalk from 'chalk';
+import { dirname } from 'path';
+import { existsSync } from 'fs';
 import ora from 'ora';
 
 // Import existing services
 import FileDiscoveryService from './src/services/fileDiscovery.js';
 import ExifService from './src/services/exif.js';
 
-// Import utilities
+// Import new utility modules
+import { createConfig, validateConfig, getConfigSummary } from './src/utils/config.js';
+import { createBackup, ensureDirectory, atomicWriteJSON, calculateFileHash } from './src/utils/fileOperations.js';
+import { validateGPSCoordinates, isDuplicate, validateDataset } from './src/utils/validation.js';
+import { StatisticsTracker, generateReport, displaySummary } from './src/utils/statistics.js';
+import { parseArguments, displayHelp, handleHelpFlag, validateArguments, displayBanner, displayCompletion, displayError } from './src/utils/cli.js';
+import { mergeLocationData, transformGPSEntry, processBatches } from './src/utils/dataProcessing.js';
 import { createLogger, createBatchLogger, createOperationLogger } from './src/utils/debugLogger.js';
-import { validateCoordinates, coordinatesEqual } from './src/utils/coordinates.js';
-import { resolvePath } from './src/utils/input.js';
+import { readFile } from 'fs/promises';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 /**
- * Configuration for the geo scanning operation
- */
-const CONFIG = {
-  // Default directory paths (configurable via environment variable)
-  defaultScanDirectory: resolvePath(process.env.DEFAULT_PHOTO_DIR || '~/pics'),
-  locationDataPath: join(process.cwd(), 'data', 'location.json'),
-  
-  // Duplicate detection tolerances
-  duplicateDetection: {
-    coordinateTolerance: 0.0001,     // ~11 meters
-    timestampTolerance: 60 * 1000,   // 60 seconds in milliseconds
-    enableFileHashCheck: true        // Enable file hash comparison
-  },
-  
-  // Processing configuration
-  batchSize: 50,                     // Images to process per batch
-  progressReportInterval: 25,        // Report progress every N images
-  
-  // GPS validation bounds (worldwide)
-  gpsValidation: {
-    minLatitude: -90,
-    maxLatitude: 90,
-    minLongitude: -180,
-    maxLongitude: 180,
-    enableBoundsCheck: true
-  },
-  
-  // EXIF processing options
-  exif: {
-    useFileTimestampFallback: false,  // Only use EXIF timestamps for geo data
-    enableMultiFormatSupport: true
-  }
-};
-
-/**
  * Main class for comprehensive geo metadata scanning
  */
 class CreateGeoScanner {
-  constructor() {
+  constructor(customConfig = {}) {
+    this.config = createConfig(customConfig);
     this.logger = createLogger('CreateGeo');
     this.fileDiscovery = null;
     this.exifService = null;
+    this.statistics = new StatisticsTracker();
     this.processedImages = new Map(); // Cache for processed images
     this.duplicateHashes = new Set(); // Track file hashes for duplicate detection
     this.existingLocations = [];     // Existing location.json data
     this.newLocationData = [];       // Newly extracted location data
-    this.statistics = {
-      totalFiles: 0,
-      imageFiles: 0,
-      geoTaggedImages: 0,
-      newEntries: 0,
-      duplicatesFound: 0,
-      errors: 0,
-      errorsByType: {},
-      processingTime: 0
-    };
   }
 
   /**
@@ -96,11 +55,20 @@ class CreateGeoScanner {
     try {
       this.logger.info('Initializing services...');
       
+      // Validate configuration
+      const configErrors = validateConfig(this.config);
+      if (configErrors.length > 0) {
+        throw new Error(`Configuration validation failed: ${configErrors.join(', ')}`);
+      }
+      
+      // Log configuration summary
+      this.logger.debug('Configuration summary:', getConfigSummary(this.config));
+      
       // Initialize file discovery service
       this.fileDiscovery = new FileDiscoveryService(this.logger);
       
       // Initialize EXIF service with configuration
-      this.exifService = new ExifService(this.logger, CONFIG.exif);
+      this.exifService = new ExifService(this.logger, this.config.exif);
       
       this.logger.info('Services initialized successfully');
     } catch (error) {
@@ -113,60 +81,35 @@ class CreateGeoScanner {
    * Parse command line arguments and determine scan directory
    */
   parseArguments() {
-    const args = process.argv.slice(2);
+    const parsed = parseArguments(process.argv.slice(2), {
+      defaultScanDirectory: this.config.defaultScanDirectory,
+      supportedFlags: ['--help', '-h', '--verbose', '-v', '--dry-run']
+    });
     
-    // Check for help flag
-    if (args.includes('--help') || args.includes('-h')) {
-      this.displayHelp();
+    // Handle help flag
+    if (handleHelpFlag(parsed, {
+      toolName: 'create-geo.js',
+      description: 'Comprehensive EXIF Metadata Scanner',
+      examples: [
+        { command: 'node create-geo.js --verbose ~/photos', description: 'Scan with verbose output' },
+        { command: 'node create-geo.js --dry-run', description: 'Preview without making changes' }
+      ]
+    })) {
       process.exit(0);
     }
     
-    // Get directory from first argument or use default
-    const scanDirectory = args[0] 
-      ? resolve(args[0])
-      : CONFIG.defaultScanDirectory;
+    // Validate arguments
+    if (!validateArguments(parsed)) {
+      process.exit(1);
+    }
     
-    this.logger.info(`Scan directory determined: ${scanDirectory}`);
-    return scanDirectory;
-  }
-
-  /**
-   * Display help information
-   */
-  displayHelp() {
-    console.log(chalk.blue.bold('\n🌍 Create Geo - EXIF Metadata Scanner\n'));
-    console.log('Usage: node create-geo.js [directory]\n');
-    console.log('Options:');
-    console.log('  directory     Directory to scan for images (default: ~/pics)');
-    console.log('  --help, -h    Display this help message\n');
-    console.log('Examples:');
-    console.log('  node create-geo.js                    # Scan default ~/pics directory');
-    console.log('  node create-geo.js /path/to/photos    # Scan specific directory');
-    console.log('  node create-geo.js ./my-photos        # Scan relative directory\n');
-  }
-
-  /**
-   * Ensure required directories exist
-   */
-  async ensureDirectories() {
-    const dataDir = join(process.cwd(), 'data');
-    if (!existsSync(dataDir)) {
-      await mkdirSync(dataDir, { recursive: true });
-      this.logger.info('Created data directory');
+    // Set verbose logging if requested
+    if (parsed.flags.verbose || parsed.flags.v) {
+      process.env.LOG_LEVEL = 'debug';
     }
-  }
-
-  /**
-   * Create atomic backup of location.json
-   */
-  async createBackup() {
-    if (existsSync(CONFIG.locationDataPath)) {
-      const backupPath = `${CONFIG.locationDataPath}.backup.${Date.now()}`;
-      await copyFile(CONFIG.locationDataPath, backupPath);
-      this.logger.info(`Backup created: ${backupPath}`);
-      return backupPath;
-    }
-    return null;
+    
+    this.logger.info(`Scan directory determined: ${parsed.scanDirectory}`);
+    return parsed.scanDirectory;
   }
 
   /**
@@ -174,8 +117,8 @@ class CreateGeoScanner {
    */
   async loadExistingLocationData() {
     try {
-      if (existsSync(CONFIG.locationDataPath)) {
-        const data = await readFile(CONFIG.locationDataPath, 'utf8');
+      if (existsSync(this.config.locationDataPath)) {
+        const data = await readFile(this.config.locationDataPath, 'utf8');
         this.existingLocations = JSON.parse(data);
         this.logger.info(`Loaded ${this.existingLocations.length} existing location entries`);
       } else {
@@ -189,68 +132,6 @@ class CreateGeoScanner {
   }
 
   /**
-   * Calculate file hash for duplicate detection
-   */
-  async calculateFileHash(filePath) {
-    try {
-      const fileBuffer = await readFile(filePath);
-      return createHash('md5').update(fileBuffer).digest('hex');
-    } catch (error) {
-      this.logger.debug(`Could not calculate hash for ${filePath}:`, error.message);
-      return null;
-    }
-  }
-
-  /**
-   * Check if coordinates are duplicates based on multiple criteria
-   */
-  isDuplicate(newEntry, existingEntries) {
-    const { coordinateTolerance, timestampTolerance } = CONFIG.duplicateDetection;
-    
-    return existingEntries.some(existing => {
-      // Check coordinate proximity
-      const coordsMatch = coordinatesEqual(
-        { latitude: newEntry.latitude, longitude: newEntry.longitude },
-        { latitude: existing.latitude, longitude: existing.longitude },
-        coordinateTolerance
-      );
-      
-      // Check timestamp proximity
-      const newTime = new Date(newEntry.timestamp);
-      const existingTime = new Date(existing.timestamp);
-      const timeDiff = Math.abs(newTime.getTime() - existingTime.getTime());
-      const timeMatch = timeDiff <= timestampTolerance;
-      
-      // Check exact source match (same file path)
-      const sourceMatch = newEntry.source === existing.source;
-      
-      return coordsMatch && (timeMatch || sourceMatch);
-    });
-  }
-
-  /**
-   * Validate GPS coordinates against geographic bounds
-   */
-  validateGPSCoordinates(latitude, longitude) {
-    const { gpsValidation } = CONFIG;
-    
-    if (!gpsValidation.enableBoundsCheck) {
-      return validateCoordinates(latitude, longitude);
-    }
-    
-    // Basic coordinate validation
-    if (!validateCoordinates(latitude, longitude)) {
-      return false;
-    }
-    
-    // Extended bounds checking
-    return latitude >= gpsValidation.minLatitude && 
-           latitude <= gpsValidation.maxLatitude &&
-           longitude >= gpsValidation.minLongitude && 
-           longitude <= gpsValidation.maxLongitude;
-  }
-
-  /**
    * Process a single image file and extract GPS metadata
    */
   async processImageFile(filePath, batchLogger) {
@@ -261,10 +142,10 @@ class CreateGeoScanner {
       
       // Calculate file hash for duplicate detection
       let fileHash = null;
-      if (CONFIG.duplicateDetection.enableFileHashCheck) {
-        fileHash = await this.calculateFileHash(filePath);
+      if (this.config.duplicateDetection.enableFileHashCheck) {
+        fileHash = await calculateFileHash(filePath);
         if (fileHash && this.duplicateHashes.has(fileHash)) {
-          this.statistics.duplicatesFound++;
+          this.statistics.increment('duplicatesFound');
           operationLogger.debug('Duplicate file detected by hash', { fileHash });
           return null;
         }
@@ -280,31 +161,38 @@ class CreateGeoScanner {
       }
       
       // Validate GPS coordinates
-      if (!this.validateGPSCoordinates(metadata.latitude, metadata.longitude)) {
+      if (!validateGPSCoordinates(metadata.latitude, metadata.longitude, this.config.gpsValidation)) {
         operationLogger.warn('Invalid GPS coordinates found', {
           latitude: metadata.latitude,
           longitude: metadata.longitude
         });
-        this.recordError('invalid_coordinates', filePath, 'GPS coordinates failed validation');
+        this.statistics.recordError('invalid_coordinates', filePath, 'GPS coordinates failed validation');
         return null;
       }
       
-      // Structure the geo data entry
-      const geoEntry = {
+      // Create and transform the geo data entry
+      const rawEntry = {
         timestamp: metadata.timestamp ? metadata.timestamp.toISOString() : new Date().toISOString(),
         latitude: metadata.latitude,
         longitude: metadata.longitude,
-        source: `exif_metadata`,
+        source: 'exif_metadata',
         accuracy: 1, // EXIF data is considered most accurate
         camera: metadata.camera,
         format: metadata.format,
         filePath: filePath
       };
       
+      const geoEntry = transformGPSEntry(rawEntry, {
+        includeMetadata: true,
+        normalizeTimestamp: true,
+        addDefaults: true,
+        precision: 6
+      });
+      
       // Check for duplicates against existing data
       const allExistingData = [...this.existingLocations, ...this.newLocationData];
-      if (this.isDuplicate(geoEntry, allExistingData)) {
-        this.statistics.duplicatesFound++;
+      if (isDuplicate(geoEntry, allExistingData, this.config.duplicateDetection)) {
+        this.statistics.increment('duplicatesFound');
         operationLogger.debug('Duplicate entry detected by coordinates/timestamp');
         return null;
       }
@@ -314,30 +202,18 @@ class CreateGeoScanner {
         this.duplicateHashes.add(fileHash);
       }
       
-      this.statistics.geoTaggedImages++;
+      this.statistics.increment('geoTaggedImages');
       operationLogger.success('Successfully extracted GPS metadata');
       
       return geoEntry;
       
     } catch (error) {
       const errorMessage = error.message || 'Unknown error during processing';
-      this.recordError('processing_error', filePath, errorMessage);
+      this.statistics.recordError('processing_error', filePath, errorMessage);
       operationLogger.error('Processing failed', error);
       batchLogger.itemError(filePath, error, { stage: 'image_processing' });
       return null;
     }
-  }
-
-  /**
-   * Record error statistics
-   */
-  recordError(category, filePath, message) {
-    this.statistics.errors++;
-    if (!this.statistics.errorsByType[category]) {
-      this.statistics.errorsByType[category] = 0;
-    }
-    this.statistics.errorsByType[category]++;
-    this.logger.error(`${category}: ${filePath}`, { error: message });
   }
 
   /**
@@ -371,208 +247,15 @@ class CreateGeoScanner {
       }
       
       // Report progress periodically
-      if ((i + 1) % CONFIG.progressReportInterval === 0) {
+      if ((i + 1) % this.config.progressReportInterval === 0) {
         const batchProgress = ((i + 1) / imageFiles.length * 100).toFixed(1);
-        const overallProgress = (((batchNumber - 1) * CONFIG.batchSize + i + 1) / this.statistics.imageFiles * 100).toFixed(1);
+        const overallProgress = (((batchNumber - 1) * this.config.batchSize + i + 1) / this.statistics.getStatistics().imageFiles * 100).toFixed(1);
         this.logger.info(`Batch ${batchNumber}/${totalBatches} progress: ${batchProgress}% (Overall: ${overallProgress}%)`);
       }
     }
     
     batchLogger.complete();
     return batchResults;
-  }
-
-  /**
-   * Merge new location data with existing data while preserving integrity
-   */
-  mergeLocationData(newData) {
-    this.logger.info(`Merging ${newData.length} new entries with ${this.existingLocations.length} existing entries`);
-    
-    // Combine all data
-    const combinedData = [...this.existingLocations, ...newData];
-    
-    // Sort chronologically by timestamp
-    combinedData.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-    
-    // Final duplicate removal pass (in case there are duplicates in existing data)
-    const finalData = [];
-    const processedEntries = new Set();
-    
-    for (const entry of combinedData) {
-      const entryKey = `${entry.latitude}_${entry.longitude}_${entry.timestamp}_${entry.source}`;
-      
-      if (!processedEntries.has(entryKey)) {
-        // Additional validation
-        if (this.validateGPSCoordinates(entry.latitude, entry.longitude)) {
-          finalData.push(entry);
-          processedEntries.add(entryKey);
-        } else {
-          this.logger.warn('Removing invalid entry during merge', entry);
-        }
-      } else {
-        this.statistics.duplicatesFound++;
-        this.logger.debug('Duplicate removed during final merge', entry);
-      }
-    }
-    
-    this.statistics.newEntries = newData.length;
-    this.logger.info(`Final dataset: ${finalData.length} entries (${this.statistics.newEntries} new, ${this.statistics.duplicatesFound} duplicates removed)`);
-    
-    return finalData;
-  }
-
-  /**
-   * Validate final dataset against JSON schema structure
-   */
-  validateDataset(data) {
-    const requiredFields = ['timestamp', 'latitude', 'longitude', 'source', 'accuracy'];
-    const errors = [];
-    
-    for (let i = 0; i < data.length; i++) {
-      const entry = data[i];
-      
-      // Check required fields
-      for (const field of requiredFields) {
-        if (entry[field] === undefined || entry[field] === null) {
-          errors.push(`Entry ${i}: Missing required field '${field}'`);
-        }
-      }
-      
-      // Validate data types
-      if (typeof entry.latitude !== 'number' || typeof entry.longitude !== 'number') {
-        errors.push(`Entry ${i}: Coordinates must be numbers`);
-      }
-      
-      // Validate timestamp format
-      if (entry.timestamp && isNaN(Date.parse(entry.timestamp))) {
-        errors.push(`Entry ${i}: Invalid timestamp format`);
-      }
-      
-      // Validate coordinates
-      if (!this.validateGPSCoordinates(entry.latitude, entry.longitude)) {
-        errors.push(`Entry ${i}: Invalid GPS coordinates`);
-      }
-    }
-    
-    if (errors.length > 0) {
-      this.logger.error('Dataset validation failed', { errors: errors.slice(0, 10) }); // Log first 10 errors
-      throw new Error(`Dataset validation failed with ${errors.length} errors`);
-    }
-    
-    this.logger.info(`Dataset validation passed for ${data.length} entries`);
-    return true;
-  }
-
-  /**
-   * Atomic write operation with backup and rollback
-   */
-  async atomicWriteLocationData(data, backupPath) {
-    try {
-      // Validate data before writing
-      this.validateDataset(data);
-      
-      // Write to temporary file first
-      const tempPath = `${CONFIG.locationDataPath}.tmp`;
-      const jsonData = JSON.stringify(data, null, 2);
-      await writeFile(tempPath, jsonData, 'utf8');
-      
-      // Verify written data
-      const verificationData = JSON.parse(await readFile(tempPath, 'utf8'));
-      if (verificationData.length !== data.length) {
-        throw new Error('Data verification failed after write');
-      }
-      
-      // Atomic move (rename) to final location
-      if (existsSync(CONFIG.locationDataPath)) {
-        await copyFile(tempPath, CONFIG.locationDataPath);
-      } else {
-        await copyFile(tempPath, CONFIG.locationDataPath);
-      }
-      
-      // Clean up temp file
-      try {
-        await unlink(tempPath);
-      } catch (unlinkError) {
-        this.logger.warn('Could not remove temp file:', unlinkError.message);
-      }
-      
-      this.logger.info(`Successfully wrote ${data.length} entries to ${CONFIG.locationDataPath}`);
-      
-    } catch (error) {
-      this.logger.error('Atomic write operation failed:', error);
-      
-      // Attempt rollback if backup exists
-      if (backupPath && existsSync(backupPath)) {
-        try {
-          await copyFile(backupPath, CONFIG.locationDataPath);
-          this.logger.info('Successfully rolled back to backup');
-        } catch (rollbackError) {
-          this.logger.error('Rollback failed:', rollbackError);
-          throw new Error(`Write failed and rollback failed: ${rollbackError.message}`);
-        }
-      }
-      
-      throw new Error(`Atomic write failed: ${error.message}`);
-    }
-  }
-
-  /**
-   * Generate comprehensive statistics report
-   */
-  generateReport() {
-    const report = {
-      timestamp: new Date().toISOString(),
-      scanning: {
-        totalFiles: this.statistics.totalFiles,
-        imageFiles: this.statistics.imageFiles,
-        geoTaggedImages: this.statistics.geoTaggedImages,
-        successRate: this.statistics.imageFiles > 0 
-          ? (this.statistics.geoTaggedImages / this.statistics.imageFiles * 100).toFixed(1) + '%'
-          : '0%'
-      },
-      processing: {
-        newEntries: this.statistics.newEntries,
-        duplicatesFound: this.statistics.duplicatesFound,
-        errors: this.statistics.errors,
-        processingTime: this.statistics.processingTime
-      },
-      errors: this.statistics.errorsByType,
-      dataset: {
-        totalEntries: this.existingLocations.length + this.statistics.newEntries,
-        existingEntries: this.existingLocations.length,
-        addedEntries: this.statistics.newEntries
-      }
-    };
-    
-    return report;
-  }
-
-  /**
-   * Display processing summary
-   */
-  displaySummary(report) {
-    console.log(chalk.blue.bold('\n📈 Processing Summary\n'));
-    
-    console.log(`${chalk.green('📁 Total Files Scanned:')} ${report.scanning.totalFiles}`);
-    console.log(`${chalk.cyan('🖼️ Image Files Found:')} ${report.scanning.imageFiles}`);
-    console.log(`${chalk.green('📍 Geo-tagged Images:')} ${report.scanning.geoTaggedImages}`);
-    console.log(`${chalk.blue('📊 GPS Success Rate:')} ${report.scanning.successRate}`);
-    console.log(`${chalk.yellow('📋 New Entries Added:')} ${report.processing.newEntries}`);
-    console.log(`${chalk.magenta('🔄 Duplicates Found:')} ${report.processing.duplicatesFound}`);
-    
-    if (report.processing.errors > 0) {
-      console.log(`${chalk.red('❌ Errors:')} ${report.processing.errors}`);
-      
-      if (Object.keys(report.errors).length > 0) {
-        console.log(chalk.yellow.bold('\n📋 Error Categories:'));
-        Object.entries(report.errors).forEach(([category, count]) => {
-          console.log(`  ${chalk.yellow('•')} ${category}: ${count}`);
-        });
-      }
-    }
-    
-    console.log(`${chalk.blue('⏱️ Processing Time:')} ${report.processing.processingTime}ms`);
-    console.log(`${chalk.cyan('💾 Total Dataset Size:')} ${report.dataset.totalEntries} entries`);
   }
 
   /**
@@ -596,12 +279,16 @@ class CreateGeoScanner {
    * Main execution method
    */
   async run() {
-    const startTime = Date.now();
+    this.statistics.startTiming();
     let backupPath = null;
     
     try {
-      // Display header
-      console.log(chalk.blue.bold('\n🌍 Create Geo - Comprehensive EXIF Scanner\n'));
+      // Display banner
+      displayBanner({
+        title: '🌍 Create Geo - Comprehensive EXIF Scanner',
+        subtitle: 'Extracting GPS metadata from image collections',
+        author: 'Tom Cranstoun <ddttom@github.com>'
+      });
       
       // Parse command line arguments
       const scanDirectory = this.parseArguments();
@@ -611,76 +298,118 @@ class CreateGeoScanner {
         throw new Error(`Scan directory does not exist: ${scanDirectory}`);
       }
       
-      console.log(chalk.green(`Scanning directory: ${scanDirectory}\n`));
+      console.log(`\nScanning directory: ${scanDirectory}\n`);
       
       // Initialize services and directories
       await this.initializeServices();
-      await this.ensureDirectories();
+      await ensureDirectory(dirname(this.config.locationDataPath));
       
       // Create backup and load existing data
       let spinner = ora('Creating backup and loading existing data...').start();
-      backupPath = await this.createBackup();
+      backupPath = await createBackup(this.config.locationDataPath);
       await this.loadExistingLocationData();
       spinner.succeed(`Backup created, loaded ${this.existingLocations.length} existing entries`);
       
       // Discover image files
       spinner = ora('Discovering image files...').start();
       const imageFiles = await this.fileDiscovery.scanDirectory(scanDirectory);
-      this.statistics.totalFiles = this.fileDiscovery.getStats().totalFiles;
-      this.statistics.imageFiles = imageFiles.length;
-      spinner.succeed(`Found ${imageFiles.length} image files in ${this.statistics.totalFiles} total files`);
+      this.statistics.set('totalFiles', this.fileDiscovery.getStats().totalFiles);
+      this.statistics.set('imageFiles', imageFiles.length);
+      spinner.succeed(`Found ${imageFiles.length} image files in ${this.statistics.getStatistics().totalFiles} total files`);
       
       if (imageFiles.length === 0) {
-        console.log(chalk.yellow('No image files found to process'));
+        console.log('No image files found to process');
         return;
       }
       
-      // Process images in batches
-      console.log(chalk.yellow.bold('\n📸 Processing Images\n'));
+      // Process images using batch processing utility
+      console.log('\n📸 Processing Images\n');
       
-      const batches = [];
-      for (let i = 0; i < imageFiles.length; i += CONFIG.batchSize) {
-        batches.push(imageFiles.slice(i, i + CONFIG.batchSize));
-      }
+      const processingResult = await processBatches(
+        imageFiles,
+        async (batch, batchNumber, totalBatches) => {
+          const spinner = ora(`Processing batch ${batchNumber}/${totalBatches} (${batch.length} images)...`).start();
+          
+          try {
+            const batchResults = await this.processBatch(batch, batchNumber, totalBatches);
+            spinner.succeed(`Batch ${batchNumber}/${totalBatches} completed - ${batchResults.length} GPS entries extracted`);
+            return batchResults;
+          } catch (error) {
+            spinner.fail(`Batch ${batchNumber}/${totalBatches} failed: ${error.message}`);
+            throw error;
+          }
+        },
+        {
+          batchSize: this.config.batchSize,
+          continueOnError: true
+        }
+      );
       
-      for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
-        const batch = batches[batchIndex];
-        const batchNumber = batchIndex + 1;
-        
-        spinner = ora(`Processing batch ${batchNumber}/${batches.length} (${batch.length} images)...`).start();
-        
-        const batchResults = await this.processBatch(batch, batchNumber, batches.length);
-        this.newLocationData.push(...batchResults);
-        
-        spinner.succeed(`Batch ${batchNumber}/${batches.length} completed - ${batchResults.length} GPS entries extracted`);
-      }
+      // Collect all results
+      this.newLocationData = processingResult.batchResults.flat();
       
       // Merge and write data
       spinner = ora('Merging data and updating location file...').start();
-      const finalData = this.mergeLocationData(this.newLocationData);
-      await this.atomicWriteLocationData(finalData, backupPath);
+      const mergeResult = mergeLocationData(
+        this.existingLocations,
+        this.newLocationData,
+        {
+          sortByTimestamp: true,
+          removeDuplicates: true,
+          validateCoordinates: true,
+          bounds: this.config.gpsValidation,
+          tolerances: this.config.duplicateDetection
+        }
+      );
+      
+      // Validate final dataset
+      const validation = validateDataset(mergeResult.data, this.config.gpsValidation);
+      if (!validation.isValid) {
+        this.logger.warn('Dataset validation warnings:', validation.errors.slice(0, 5));
+      }
+      
+      // Write data atomically
+      await atomicWriteJSON(this.config.locationDataPath, mergeResult.data, {
+        backupPath,
+        indent: 2,
+        validator: (parsedData, originalData) => {
+          return Array.isArray(parsedData) && parsedData.length === originalData.length;
+        }
+      });
+      
       spinner.succeed('Location data updated successfully');
       
-      // Record final processing time
-      this.statistics.processingTime = Date.now() - startTime;
+      // Update statistics
+      this.statistics.set('newEntries', mergeResult.statistics.newEntries);
+      this.statistics.increment('duplicatesFound', mergeResult.statistics.duplicatesRemoved);
+      this.statistics.endTiming();
       
       // Generate and display report
-      const report = this.generateReport();
-      this.displaySummary(report);
+      const report = generateReport(this.statistics, this.existingLocations);
+      displaySummary(report, {
+        showErrors: true,
+        showPerformance: true,
+        showDataset: true
+      });
       
-      console.log(chalk.green.bold('\n✅ Geo metadata scanning completed successfully!'));
+      displayCompletion(true, {
+        newEntries: this.statistics.getStatistics().newEntries,
+        duplicatesFound: this.statistics.getStatistics().duplicatesFound
+      });
       
     } catch (error) {
-      console.error(chalk.red.bold('\n❌ Script failed:'), error.message);
+      this.statistics.endTiming();
+      displayError('Script failed', error, { showStack: false });
       this.logger.error('Script execution failed:', error);
       
       // Attempt rollback if we have a backup
-      if (backupPath) {
+      if (backupPath && existsSync(backupPath)) {
         try {
-          await copyFile(backupPath, CONFIG.locationDataPath);
-          console.log(chalk.yellow('⚠️ Rolled back to backup due to error'));
+          const { copyFile } = await import('fs/promises');
+          await copyFile(backupPath, this.config.locationDataPath);
+          console.log('⚠️ Rolled back to backup due to error');
         } catch (rollbackError) {
-          console.error(chalk.red('❌ Rollback also failed:'), rollbackError.message);
+          displayError('Rollback also failed', rollbackError);
         }
       }
       
@@ -703,7 +432,7 @@ async function main() {
     await scanner.run();
     process.exit(0);
   } catch (error) {
-    console.error(chalk.red.bold('Fatal error:'), error.message);
+    displayError('Fatal error', error);
     process.exit(1);
   }
 }
