@@ -10,9 +10,35 @@
 import inquirer from 'inquirer';
 import { existsSync } from 'fs';
 import { resolve } from 'path';
+import { homedir } from 'os';
 
 /**
- * Get user input with prompt and optional default value
+ * Resolve path with tilde expansion and normalization
+ * @param {string} inputPath - Path that may contain ~ or be relative
+ * @returns {string} Resolved absolute path
+ */
+export function resolvePath(inputPath) {
+  if (!inputPath || typeof inputPath !== 'string') {
+    return '';
+  }
+  
+  // Handle tilde expansion
+  if (inputPath.startsWith('~/') || inputPath === '~') {
+    return resolve(homedir(), inputPath.slice(2));
+  }
+  
+  // Handle absolute paths
+  if (inputPath.startsWith('/') || (process.platform === 'win32' && /^[A-Za-z]:/.test(inputPath))) {
+    return resolve(inputPath);
+  }
+  
+  // Handle relative paths
+  return resolve(process.cwd(), inputPath);
+}
+
+/**
+ * Get user input with prompt and optional default value</search>
+</search_and_replace>
  * @param {string} message - Prompt message
  * @param {string} defaultValue - Default value if user presses enter
  * @param {Function} validator - Optional validation function

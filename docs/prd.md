@@ -231,7 +231,33 @@ tools/
 
 ### Configuration Options
 
-The application can be customized via the config object in `src/index.js`:
+#### Environment Variables
+
+The application supports configuration via environment variables in the `.env` file:
+
+```bash
+# Photo Directory Configuration (NEW)
+DEFAULT_PHOTO_DIR=~/pics                    # Default photo directory (supports ~, relative, and absolute paths)
+
+# Processing Configuration
+TIMELINE_TOLERANCE_MINUTES=60               # Timeline matching tolerance
+BATCH_SIZE=25                              # Images to process in parallel
+
+# Feature Toggles
+ENHANCED_FALLBACK_ENABLED=true             # Enable enhanced fallback interpolation
+TIMELINE_AUGMENTATION_ENABLED=true         # Enable timeline augmentation
+
+# Database Settings
+ENABLE_SQLITE_PERSISTENCE=true             # Enable SQLite persistence
+VALIDATE_COORDINATES=true                  # Validate GPS coordinates
+
+# Logging
+LOG_LEVEL=info                             # Logging level (error, warn, info, debug)
+```
+
+#### Application Configuration Object
+
+The application can also be customized via the config object in `src/index.js`:
 
 ```javascript
 this.config = {
@@ -255,9 +281,46 @@ this.config = {
     },
     exif: {
         useFileTimestampFallback: true    // Use file modification time as fallback for missing EXIF timestamps
+    },
+    directories: {
+        defaultPhotoDir: process.env.DEFAULT_PHOTO_DIR || '~/pics'  // Default photo directory (configurable via environment)
     }
 };
 ```
+
+#### Configurable Photo Directory Feature
+
+**NEW**: The application now supports configurable photo directory paths via the `DEFAULT_PHOTO_DIR` environment variable:
+
+**Supported Path Formats**:
+- **Tilde expansion**: `~/pics` (expands to user's home directory + pics)
+- **Absolute paths**: `/home/user/photos` or `C:\Users\User\Photos`
+- **Relative paths**: `./images` or `../photos`
+
+**Cross-Platform Compatibility**: Automatic path resolution works on Windows, macOS, and Linux.
+
+**Implementation**: Uses the `resolvePath()` utility function in `src/utils/input.js` for robust path handling.
+
+**Usage Examples**:
+```bash
+# Use home directory pics folder (default)
+DEFAULT_PHOTO_DIR=~/pics
+
+# Use absolute path
+DEFAULT_PHOTO_DIR=/home/user/my-photos
+
+# Use relative path from project root
+DEFAULT_PHOTO_DIR=./test-images
+
+# Windows absolute path
+DEFAULT_PHOTO_DIR=C:\Users\User\Pictures
+```
+
+**Benefits**:
+- **Flexibility**: Users can configure photo directory via environment variables
+- **Consistency**: Same configuration used across main application and create-geo.js script
+- **Backward Compatibility**: Maintains default `~/pics` behavior if not configured
+- **Path Safety**: Robust path resolution handles edge cases and invalid inputs
 
 ### Output and Reporting
 

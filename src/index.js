@@ -27,7 +27,7 @@ import TimelineAugmentationService from './services/timelineAugmentation.js';
 import StatisticsService from './services/statistics.js';
 
 // Import utilities
-import { getUserInput } from './utils/input.js';
+import { getUserInput, resolvePath } from './utils/input.js';
 import { createLogger } from './utils/debugLogger.js';
 import { validateCoordinates } from './utils/coordinates.js';
 
@@ -60,6 +60,9 @@ class GeoImagesApp {
       },
       exif: {
         useFileTimestampFallback: true    // Use file modification time as fallback for missing EXIF timestamps
+      },
+      directories: {
+        defaultPhotoDir: process.env.DEFAULT_PHOTO_DIR || '~/pics'  // Default photo directory (configurable via environment)
       }
     };
 
@@ -137,16 +140,21 @@ class GeoImagesApp {
 
   /**
    * Get photo directory from command line args or user input
+   * Uses DEFAULT_PHOTO_DIR environment variable as default with proper path resolution
    */
   async getPhotoDirectory() {
     const args = process.argv.slice(2);
     
     if (args.length > 0) {
-      return args[0];
+      return resolvePath(args[0]);
     }
     
-    const defaultPath = join(process.env.HOME || process.env.USERPROFILE || '', 'pics');
-    return await getUserInput('Enter photo directory path:', defaultPath);
+    // Use DEFAULT_PHOTO_DIR from environment, fallback to ~/pics
+    const envDefault = process.env.DEFAULT_PHOTO_DIR || '~/pics';
+    const defaultPath = resolvePath(envDefault);
+    
+    const userInput = await getUserInput('Enter photo directory path:', defaultPath);
+    return resolvePath(userInput);
   }
 
   /**

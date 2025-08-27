@@ -25,6 +25,7 @@ import ExifService from './src/services/exif.js';
 // Import utilities
 import { createLogger, createBatchLogger, createOperationLogger } from './src/utils/debugLogger.js';
 import { validateCoordinates, coordinatesEqual } from './src/utils/coordinates.js';
+import { resolvePath } from './src/utils/input.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -33,8 +34,8 @@ const __dirname = dirname(__filename);
  * Configuration for the geo scanning operation
  */
 const CONFIG = {
-  // Default directory paths
-  defaultScanDirectory: join(process.env.HOME || process.env.USERPROFILE || '', 'pics'),
+  // Default directory paths (configurable via environment variable)
+  defaultScanDirectory: resolvePath(process.env.DEFAULT_PHOTO_DIR || '~/pics'),
   locationDataPath: join(process.cwd(), 'data', 'location.json'),
   
   // Duplicate detection tolerances

@@ -180,6 +180,8 @@ The application uses a priority-based system for GPS sources:
 
 ## Configuration
 
+> 📖 **For detailed configuration options and examples, see [docs/CONFIGURATION.md](docs/CONFIGURATION.md)**
+
 ### Environment Variables
 
 Copy `.env.example` to `.env` and customize:
