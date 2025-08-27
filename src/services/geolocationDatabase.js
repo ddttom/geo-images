@@ -3,6 +3,7 @@
  * 
  * Manages GPS coordinate storage and retrieval with optional SQLite persistence.
  * Provides priority-based GPS source management and incremental processing.
+ * Enhanced with comprehensive database optimization, indexing, and performance monitoring.
  * 
  * @author Tom Cranstoun <ddttom@github.com>
  */
@@ -12,6 +13,8 @@ import { existsSync } from 'fs';
 import { join } from 'path';
 import sqlite3 from 'sqlite3';
 import { validateCoordinates } from '../utils/coordinates.js';
+import DatabaseMigrationService from './databaseMigration.js';
+import DatabasePerformanceMonitor from './databasePerformanceMonitor.js';
 
 /**
  * Service for geolocation database operations
@@ -22,6 +25,8 @@ class GeolocationDatabaseService {
     this.logger = logger;
     this.inMemoryDb = new Map();
     this.sqliteDb = null;
+    this.migrationService = null;
+    this.performanceMonitor = null;
     
     // GPS source priorities (higher = more trusted)
     this.sourcePriorities = {
@@ -60,44 +65,74 @@ class GeolocationDatabaseService {
   }
 
   /**
-   * Initialize SQLite database
+   * Initialize SQLite database with migrations and performance monitoring
    * @returns {Promise<void>}
    */
   async initializeSQLite() {
-    return new Promise((resolve, reject) => {
+    return new Promise(async (resolve, reject) => {
       const dbPath = join(process.cwd(), 'data', 'geolocation.db');
       
-      this.sqliteDb = new sqlite3.Database(dbPath, (err) => {
+      this.sqliteDb = new sqlite3.Database(dbPath, async (err) => {
         if (err) {
           this.logger.error('SQLite initialization failed:', err.message);
           reject(err);
           return;
         }
         
-        // Create table if it doesn't exist
-        this.sqliteDb.run(`
-          CREATE TABLE IF NOT EXISTS geolocation (
-            file_path TEXT PRIMARY KEY,
-            latitude REAL NOT NULL,
-            longitude REAL NOT NULL,
-            source TEXT NOT NULL,
-            accuracy REAL,
-            confidence REAL,
-            timestamp TEXT NOT NULL,
-            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-          )
-        `, (err) => {
-          if (err) {
-            this.logger.error('Failed to create SQLite table:', err.message);
-            reject(err);
-          } else {
-            this.logger.debug('SQLite database ready');
-            resolve();
-          }
-        });
+        try {
+          // Initialize migration service
+          this.migrationService = new DatabaseMigrationService(this.logger);
+          
+          // Run database migrations (includes index creation)
+          await this.migrationService.runMigrations(this.sqliteDb);
+          
+          // Initialize performance monitoring
+          this.performanceMonitor = new DatabasePerformanceMonitor(this.sqliteDb, this.logger);
+          
+          // Enable SQLite optimizations
+          await this.enableSQLiteOptimizations();
+          
+          this.logger.debug('SQLite database ready with optimized indexes');
+          resolve();
+          
+        } catch (migrationError) {
+          this.logger.error('Database migration failed:', migrationError.message);
+          reject(migrationError);
+        }
       });
     });
+  }
+
+  /**
+   * Enable SQLite performance optimizations
+   * @returns {Promise<void>}
+   */
+  async enableSQLiteOptimizations() {
+    const optimizations = [
+      'PRAGMA journal_mode = WAL',           // Write-Ahead Logging for better concurrency
+      'PRAGMA synchronous = NORMAL',         // Balance between safety and performance
+      'PRAGMA cache_size = 10000',           // Increase cache size (10MB)
+      'PRAGMA temp_store = MEMORY',          // Store temporary tables in memory
+      'PRAGMA mmap_size = 268435456',        // Enable memory-mapped I/O (256MB)
+      'PRAGMA optimize'                      // Update query planner statistics
+    ];
+
+    for (const pragma of optimizations) {
+      try {
+        await new Promise((resolve, reject) => {
+          this.sqliteDb.run(pragma, (err) => {
+            if (err) {
+              this.logger.warn(`Failed to apply optimization: ${pragma}`, err.message);
+              resolve(); // Don't fail initialization for optimization issues
+            } else {
+              resolve();
+            }
+          });
+        });
+      } catch (error) {
+        this.logger.warn(`Optimization failed: ${pragma}`, error.message);
+      }
+    }
   }
 
   /**
@@ -133,7 +168,7 @@ class GeolocationDatabaseService {
   }
 
   /**
-   * Store GPS coordinates for a file
+   * Store GPS coordinates for a file with performance monitoring
    * @param {string} filePath - File path
    * @param {Object} coordinates - GPS coordinates
    * @param {string} source - Source of coordinates
@@ -175,8 +210,15 @@ class GeolocationDatabaseService {
       
       this.inMemoryDb.set(filePath, record);
       
-      // Store in SQLite if enabled
-      if (this.sqliteDb) {
+      // Store in SQLite if enabled with performance monitoring
+      if (this.sqliteDb && this.performanceMonitor) {
+        await this.performanceMonitor.monitorQuery(
+          'coordinate_store',
+          'INSERT OR REPLACE INTO geolocation (file_path, latitude, longitude, source, accuracy, confidence, timestamp, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)',
+          [filePath, record.latitude, record.longitude, record.source, record.accuracy, record.confidence, record.timestamp.toISOString()],
+          () => this.storeSQLite(filePath, record)
+        );
+      } else if (this.sqliteDb) {
         await this.storeSQLite(filePath, record);
       }
       
@@ -225,7 +267,7 @@ class GeolocationDatabaseService {
   }
 
   /**
-   * Get GPS coordinates for a file
+   * Get GPS coordinates for a file with performance monitoring
    * @param {string} filePath - File path
    * @returns {Promise<Object|null>} GPS coordinates or null
    */
@@ -242,8 +284,21 @@ class GeolocationDatabaseService {
       };
     }
     
-    // Check SQLite if enabled and not in memory
-    if (this.sqliteDb) {
+    // Check SQLite if enabled and not in memory with performance monitoring
+    if (this.sqliteDb && this.performanceMonitor) {
+      const sqliteRecord = await this.performanceMonitor.monitorQuery(
+        'coordinate_lookup',
+        'SELECT * FROM geolocation WHERE file_path = ?',
+        [filePath],
+        () => this.getSQLite(filePath)
+      );
+      
+      if (sqliteRecord) {
+        // Cache in memory for future lookups
+        this.inMemoryDb.set(filePath, sqliteRecord);
+        return sqliteRecord;
+      }
+    } else if (this.sqliteDb) {
       const sqliteRecord = await this.getSQLite(filePath);
       if (sqliteRecord) {
         // Cache in memory for future lookups
@@ -280,6 +335,124 @@ class GeolocationDatabaseService {
             });
           } else {
             resolve(null);
+          }
+        }
+      );
+    });
+  }
+
+  /**
+   * Find coordinates by timestamp range with optimized query
+   * @param {Date} targetTimestamp - Target timestamp
+   * @param {number} toleranceMinutes - Tolerance in minutes
+   * @returns {Promise<Array>} Matching coordinates
+   */
+  async findCoordinatesByTimeRange(targetTimestamp, toleranceMinutes = 60) {
+    if (!this.sqliteDb || !this.performanceMonitor) {
+      return [];
+    }
+
+    const startTime = new Date(targetTimestamp.getTime() - (toleranceMinutes * 60 * 1000));
+    const endTime = new Date(targetTimestamp.getTime() + (toleranceMinutes * 60 * 1000));
+
+    return await this.performanceMonitor.monitorQuery(
+      'timeline_search',
+      `SELECT * FROM geolocation 
+       WHERE timestamp BETWEEN ? AND ? 
+       ORDER BY ABS(julianday(timestamp) - julianday(?)) ASC 
+       LIMIT 10`,
+      [startTime.toISOString(), endTime.toISOString(), targetTimestamp.toISOString()],
+      () => this.executeTimeRangeQuery(startTime, endTime, targetTimestamp)
+    );
+  }
+
+  /**
+   * Execute time range query
+   * @param {Date} startTime - Start time
+   * @param {Date} endTime - End time
+   * @param {Date} targetTimestamp - Target timestamp
+   * @returns {Promise<Array>} Query results
+   */
+  async executeTimeRangeQuery(startTime, endTime, targetTimestamp) {
+    return new Promise((resolve, reject) => {
+      this.sqliteDb.all(
+        `SELECT * FROM geolocation 
+         WHERE timestamp BETWEEN ? AND ? 
+         ORDER BY ABS(julianday(timestamp) - julianday(?)) ASC 
+         LIMIT 10`,
+        [startTime.toISOString(), endTime.toISOString(), targetTimestamp.toISOString()],
+        (err, rows) => {
+          if (err) {
+            this.logger.error('Time range query failed:', err.message);
+            reject(err);
+          } else {
+            resolve(rows || []);
+          }
+        }
+      );
+    });
+  }
+
+  /**
+   * Find coordinates by geographic proximity with spatial indexing
+   * @param {number} latitude - Target latitude
+   * @param {number} longitude - Target longitude
+   * @param {number} radiusKm - Search radius in kilometers
+   * @returns {Promise<Array>} Nearby coordinates
+   */
+  async findCoordinatesByProximity(latitude, longitude, radiusKm = 1) {
+    if (!this.sqliteDb || !this.performanceMonitor) {
+      return [];
+    }
+
+    // Use spatial grid index for efficient proximity search
+    const gridLat = Math.floor(latitude * 1000);
+    const gridLon = Math.floor(longitude * 1000);
+    const gridRadius = Math.ceil(radiusKm * 1000 / 111); // Approximate grid cells for radius
+
+    return await this.performanceMonitor.monitorQuery(
+      'proximity_search',
+      `SELECT *, 
+       (6371 * acos(cos(radians(?)) * cos(radians(latitude)) * cos(radians(longitude) - radians(?)) + sin(radians(?)) * sin(radians(latitude)))) AS distance
+       FROM geolocation 
+       WHERE CAST(latitude * 1000 AS INTEGER) BETWEEN ? AND ?
+       AND CAST(longitude * 1000 AS INTEGER) BETWEEN ? AND ?
+       HAVING distance <= ?
+       ORDER BY distance ASC
+       LIMIT 20`,
+      [latitude, longitude, latitude, gridLat - gridRadius, gridLat + gridRadius, gridLon - gridRadius, gridLon + gridRadius, radiusKm],
+      () => this.executeProximityQuery(latitude, longitude, gridLat, gridLon, gridRadius, radiusKm)
+    );
+  }
+
+  /**
+   * Execute proximity query
+   * @param {number} latitude - Target latitude
+   * @param {number} longitude - Target longitude
+   * @param {number} gridLat - Grid latitude
+   * @param {number} gridLon - Grid longitude
+   * @param {number} gridRadius - Grid radius
+   * @param {number} radiusKm - Radius in kilometers
+   * @returns {Promise<Array>} Query results
+   */
+  async executeProximityQuery(latitude, longitude, gridLat, gridLon, gridRadius, radiusKm) {
+    return new Promise((resolve, reject) => {
+      this.sqliteDb.all(
+        `SELECT *, 
+         (6371 * acos(cos(radians(?)) * cos(radians(latitude)) * cos(radians(longitude) - radians(?)) + sin(radians(?)) * sin(radians(latitude)))) AS distance
+         FROM geolocation 
+         WHERE CAST(latitude * 1000 AS INTEGER) BETWEEN ? AND ?
+         AND CAST(longitude * 1000 AS INTEGER) BETWEEN ? AND ?
+         HAVING distance <= ?
+         ORDER BY distance ASC
+         LIMIT 20`,
+        [latitude, longitude, latitude, gridLat - gridRadius, gridLat + gridRadius, gridLon - gridRadius, gridLon + gridRadius, radiusKm],
+        (err, rows) => {
+          if (err) {
+            this.logger.error('Proximity query failed:', err.message);
+            reject(err);
+          } else {
+            resolve(rows || []);
           }
         }
       );
@@ -339,7 +512,7 @@ class GeolocationDatabaseService {
   }
 
   /**
-   * Get database statistics
+   * Get database statistics with performance metrics
    * @returns {Promise<Object>} Database statistics
    */
   async getStatistics() {
@@ -362,8 +535,8 @@ class GeolocationDatabaseService {
         confidenceStats.push(record.confidence);
       }
     });
-    
-    return {
+
+    const stats = {
       totalRecords: records.length,
       sources,
       accuracy: this.calculateStats(accuracyStats),
@@ -371,6 +544,18 @@ class GeolocationDatabaseService {
       memoryRecords: this.inMemoryDb.size,
       sqliteEnabled: !!this.sqliteDb
     };
+
+    // Add performance statistics if available
+    if (this.performanceMonitor) {
+      try {
+        const performanceStats = await this.performanceMonitor.getPerformanceStats();
+        stats.performance = performanceStats;
+      } catch (error) {
+        this.logger.debug('Failed to get performance stats:', error.message);
+      }
+    }
+
+    return stats;
   }
 
   /**
@@ -476,6 +661,38 @@ class GeolocationDatabaseService {
         }
       });
     });
+  }
+
+  /**
+   * Run database maintenance
+   * @returns {Promise<void>}
+   */
+  async runMaintenance() {
+    if (this.performanceMonitor) {
+      try {
+        await this.performanceMonitor.runIndexMaintenance();
+        await this.performanceMonitor.cleanOldStats(30); // Keep 30 days of stats
+        this.logger.info('Database maintenance completed');
+      } catch (error) {
+        this.logger.error('Database maintenance failed:', error.message);
+      }
+    }
+  }
+
+  /**
+   * Get performance analysis
+   * @returns {Promise<Object>} Performance analysis
+   */
+  async getPerformanceAnalysis() {
+    if (this.performanceMonitor) {
+      try {
+        return await this.performanceMonitor.analyzeIndexEffectiveness();
+      } catch (error) {
+        this.logger.error('Performance analysis failed:', error.message);
+        return { recommendations: [], indexEfficiency: {}, queryOptimizations: [] };
+      }
+    }
+    return { recommendations: [], indexEfficiency: {}, queryOptimizations: [] };
   }
 
   /**
