@@ -66,6 +66,39 @@ npm start -- /path/to/your/photos
 npm start -- test-subset/
 ```
 
+## Standalone Geo Extraction
+
+### Create Geo Script
+
+For extracting GPS metadata from existing image collections without timeline data, use the standalone `create-geo.js` script:
+
+```bash
+# Scan default ~/pics directory for geo-tagged images
+node create-geo.js
+
+# Scan specific directory
+node create-geo.js /path/to/photos
+
+# View help and options
+node create-geo.js --help
+```
+
+**Features:**
+
+- Recursively scans directory structure for all image formats
+- Extracts GPS coordinates from EXIF metadata in JPEG, PNG, TIFF, RAW, and Canon .cr3 files
+- Updates `data/location.json` with atomic backup/rollback protection
+- Sophisticated duplicate detection using coordinates, timestamps, and file hashes
+- Comprehensive error handling and progress reporting
+- Seamless integration with existing application configuration
+
+**Use Cases:**
+
+- Initial GPS data extraction from photo collections
+- Populating location database before timeline processing
+- Auditing existing GPS metadata in image libraries
+- Building comprehensive location datasets from multiple sources</search>
+
 ## How It Works
 
 ### Processing Phases
@@ -286,6 +319,7 @@ src/
 ### Diagnostic Tools
 
 - **`tools/single-image-diagnostic.js`**: Single image troubleshooting tool with verbose logging
+- **`create-geo.js`**: Comprehensive EXIF metadata scanner for extracting GPS data from image collections
 - **`docs/TROUBLESHOOTING.md`**: Comprehensive troubleshooting guide
 
 ### Technical Review Documentation

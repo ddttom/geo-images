@@ -48,6 +48,31 @@ npm start -- /path/to/your/photos
 npm start -- test-subset/
 ```
 
+### Standalone GPS Extraction Tool
+
+The `create-geo.js` script provides standalone GPS metadata extraction capabilities:
+
+```bash
+# Extract GPS data from default ~/pics directory
+node create-geo.js
+
+# Extract GPS data from specific directory
+node create-geo.js /path/to/photo/collection
+
+# View help and options
+node create-geo.js --help
+```
+
+**Purpose**: Systematically scans and processes image files to extract GPS metadata from EXIF data and populate the location database without requiring timeline data.
+
+**Key Features**:
+
+- Recursive directory traversal for comprehensive coverage
+- Multi-format EXIF extraction (JPEG, PNG, TIFF, RAW, Canon .cr3)
+- Atomic backup/restore for data integrity
+- Sophisticated duplicate detection and validation
+- Integration with existing application services and configuration
+
 ### What Happens During Processing
 
 The program runs in two main phases:
@@ -92,6 +117,12 @@ src/
     ├── distance.js            # Spatial calculations
     ├── input.js               # User interaction
     └── debugLogger.js         # Logging and debugging
+
+# Standalone Tools
+create-geo.js                   # Comprehensive EXIF metadata scanner
+tools/
+├── single-image-diagnostic.js # Individual image troubleshooting
+└── timeline-diagnostic.js     # Timeline data analysis
 ```
 
 ### Key Technical Components
@@ -134,6 +165,21 @@ src/
 - **Optimized Processing**: Direct exiftool integration for CR3 files
 - **File Timestamp Fallback**: Uses file modification dates when EXIF timestamps are missing
 - **Enhanced Error Handling**: Comprehensive error logging with full context and stack traces
+
+#### 5. **Standalone GPS Extraction** (`create-geo.js`)
+
+- **Purpose**: Comprehensive EXIF metadata scanner for extracting GPS data from image collections
+- **Architecture**: Leverages existing FileDiscoveryService and ExifService for consistency
+- **Implementation**:
+  - Recursive directory scanning with multi-format support
+  - Atomic backup/restore operations for data safety
+  - Sophisticated duplicate detection using coordinates, timestamps, and file hashes
+  - Integration with existing logging framework and coordinate validation
+- **Data Management**:
+  - Updates `data/location.json` directly with merge logic
+  - Preserves existing data integrity and chronological ordering
+  - Validates against JSON schema structure with consistent field naming
+- **Use Cases**: Initial GPS extraction, location database population, metadata auditing
 
 #### 5. **Performance Optimizations**
 
