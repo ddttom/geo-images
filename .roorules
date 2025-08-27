@@ -1,1 +1,3 @@
-My github username is ddttom
+# custom rules
+
+if /docs/prd.md does not exist then create it
