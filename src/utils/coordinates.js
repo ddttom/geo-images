@@ -71,12 +71,14 @@ export function decimalToDMS(decimal) {
  * @returns {number} Decimal degrees
  */
 export function dmsToDecimal(degrees, minutes, seconds, direction) {
-  let decimal = degrees + (minutes / 60) + (seconds / 3600);
+  const baseDecimal = degrees + (minutes / 60) + (seconds / 3600);
   
   // Apply direction
   if (direction === 'S' || direction === 'W' || direction === 'negative') {
-    decimal = -decimal;
+    return -baseDecimal;
   }
+  
+  return baseDecimal;
   
   return decimal;
 }
@@ -266,12 +268,12 @@ export function normalizeLongitude(longitude) {
     return 0;
   }
   
-  let normalized = longitude % 360;
+  const normalized = longitude % 360;
   
   if (normalized > 180) {
-    normalized -= 360;
+    return normalized - 360;
   } else if (normalized < -180) {
-    normalized += 360;
+    return normalized + 360;
   }
   
   return normalized;
