@@ -9,6 +9,7 @@
 
 import { calculateDistance } from '../utils/distance.js';
 import { validateCoordinates } from '../utils/coordinates.js';
+import { getCameraOrOriginalSource } from '../utils/cameraSource.js';
 
 /**
  * Service for GPS coordinate interpolation
@@ -103,7 +104,7 @@ class InterpolationService {
           result = {
             latitude: exifData.latitude,
             longitude: exifData.longitude,
-            source: 'image_exif',
+            source: getCameraOrOriginalSource(exifData.camera, 'image_exif'),
             method: 'direct',
             confidence: 1.0, // High confidence for existing EXIF data
             accuracy: null

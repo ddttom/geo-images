@@ -74,6 +74,7 @@ node create-geo.js --help
 - **Comprehensive data analysis and reporting** with temporal and geographical insights
 - **Advanced error handling** for edge cases and invalid data formats
 - **Detailed statistics generation** including time spans, data quality metrics, and distribution analysis
+- **Camera-based source attribution** with descriptive camera information instead of generic source labels
 - Integration with existing application services and configuration
 
 ### What Happens During Processing
@@ -191,6 +192,11 @@ tools/
   - **Data Quality Metrics**: Validates datetime formats and provides quality assessments
   - **Error Handling**: Robust handling of empty arrays and invalid datetime formats
 - **Use Cases**: Initial GPS extraction, location database population, metadata auditing, **temporal data analysis**, **data quality assessment**
+- **Source Attribution Enhancement**: 
+  - Replaces generic 'exif_metadata' source labels with descriptive camera information
+  - Formats camera data as "Make Model with Lens" (e.g., "Apple iPhone 12 Pro with 26mm lens")
+  - Provides intelligent fallbacks: "Make Model" → "Model only" → "Make only" → "Camera with Lens" → "create-geo"
+  - Enhances data traceability and user understanding of GPS coordinate origins
 
 #### 5. **Performance Optimizations**
 

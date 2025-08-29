@@ -27,10 +27,13 @@ import { StatisticsTracker, generateReport, displaySummary } from './src/utils/s
 import { parseArguments, displayHelp, handleHelpFlag, validateArguments, displayBanner, displayCompletion, displayError } from './src/utils/cli.js';
 import { mergeLocationData, transformGPSEntry, processBatches } from './src/utils/dataProcessing.js';
 import { createLogger, createBatchLogger, createOperationLogger } from './src/utils/debugLogger.js';
+import { formatCameraSource } from './src/utils/cameraSource.js';
 import { readFile } from 'fs/promises';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+
+
 
 /**
  * Main class for comprehensive geo metadata scanning
@@ -175,7 +178,7 @@ class CreateGeoScanner {
         timestamp: metadata.timestamp ? metadata.timestamp.toISOString() : new Date().toISOString(),
         latitude: metadata.latitude,
         longitude: metadata.longitude,
-        source: 'exif_metadata',
+        source: formatCameraSource(metadata.camera),
         accuracy: 1, // EXIF data is considered most accurate
         camera: metadata.camera,
         format: metadata.format,

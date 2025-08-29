@@ -13,6 +13,7 @@ import { existsSync } from 'fs';
 import { join } from 'path';
 import sqlite3 from 'sqlite3';
 import { validateCoordinates } from '../utils/coordinates.js';
+import { shouldUseCameraAttribution } from '../utils/cameraSource.js';
 import DatabaseMigrationService from './databaseMigration.js';
 import DatabasePerformanceMonitor from './databasePerformanceMonitor.js';
 
@@ -38,6 +39,24 @@ class GeolocationDatabaseService {
       'enhanced_fallback': 50,
       'spatial_interpolation': 40
     };
+  }
+
+  /**
+   * Get priority for a source, handling camera-based sources
+   * @param {string} source - Source string (may be camera-based)
+   * @returns {number} Priority value
+   */
+  getSourcePriority(source) {
+    // Check if it's a camera-based EXIF source
+    if (shouldUseCameraAttribution('image_exif') && 
+        source !== 'image_exif' && 
+        !this.sourcePriorities[source]) {
+      // This is likely a camera-based source, treat as high priority EXIF
+      return this.sourcePriorities['image_exif'];
+    }
+    
+    // Return standard priority or 0 for unknown sources
+    return this.sourcePriorities[source] || 0;
   }
 
   /**
@@ -187,8 +206,8 @@ class GeolocationDatabaseService {
       
       // Check if we should update based on source priority
       const existing = this.inMemoryDb.get(filePath);
-      const newPriority = this.sourcePriorities[source] || 0;
-      const existingPriority = existing ? (this.sourcePriorities[existing.source] || 0) : -1;
+      const newPriority = this.getSourcePriority(source);
+      const existingPriority = existing ? this.getSourcePriority(existing.source) : -1;
       
       if (existing && existingPriority >= newPriority) {
         this.logger.debug(`Skipping lower priority update for ${filePath}: ${source} (${newPriority}) vs ${existing.source} (${existingPriority})`);

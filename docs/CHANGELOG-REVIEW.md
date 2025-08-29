@@ -8,6 +8,115 @@
 
 This changelog documents all modifications made during the comprehensive code review process. The review focused on code quality improvements, security enhancements, and performance optimizations while maintaining the project's core philosophy of simplicity and performance.
 
+### Camera-Based Source Attribution Enhancement
+
+#### Modified Files: [`create-geo.js`](../create-geo.js)
+
+**Change: Enhanced Source Attribution with Camera Metadata**
+```diff
++ /**
++  * Format camera information into a descriptive source string
++  * @param {Object} camera - Camera metadata object with make, model, lens properties
++  * @returns {string} Formatted camera source string or fallback
++  */
++ function formatCameraSource(camera) {
++   if (!camera || typeof camera !== 'object') {
++     return 'create-geo';
++   }
++ 
++   const { make, model, lens } = camera;
++   
++   // If no camera info at all, use fallback
++   if (!make && !model && !lens) {
++     return 'create-geo';
++   }
++ 
++   let source = '';
++   
++   // Build the source string with available information
++   if (make && model) {
++     source = `${make} ${model}`;
++   } else if (model) {
++     source = model;
++   } else if (make) {
++     source = make;
++   }
++   
++   // Add lens information if available
++   if (lens && source) {
++     source += ` with ${lens}`;
++   } else if (lens && !source) {
++     source = `Camera with ${lens}`;
++   }
++   
++   // Final fallback if we couldn't build a meaningful string
++   return source || 'create-geo';
++ }
+
+- source: 'exif_metadata',
++ source: formatCameraSource(metadata.camera),
+```
+
+**Impact:** 
+- Replaces generic 'exif_metadata' source with descriptive camera information
+- Provides meaningful attribution like "Apple iPhone 12 Pro with 26mm lens"
+- Maintains backward compatibility with fallback to "create-geo" when no camera metadata available
+- Enhances data traceability and user understanding of location data sources
+
+**Test Coverage:** Added comprehensive test suite in [`tests/utils/test-camera-source.js`](../tests/utils/test-camera-source.js) covering all camera metadata scenarios.
+
+### Main Application Camera Source Attribution Integration
+
+#### Modified Files: [`src/services/interpolation.js`](../src/services/interpolation.js), [`src/services/geolocationDatabase.js`](../src/services/geolocationDatabase.js), [`src/utils/cameraSource.js`](../src/utils/cameraSource.js)
+
+**Change: Extended Camera-Based Source Attribution to Main Application**
+```diff
+# src/utils/cameraSource.js (NEW SHARED UTILITY)
++ /**
++  * Camera Source Utility
++  * 
++  * Provides camera-based source attribution formatting for GPS coordinate entries.
++  * Used by both create-geo.js and the main application for consistent source attribution.
++  */
++ export function formatCameraSource(camera) { ... }
++ export function shouldUseCameraAttribution(originalSource) { ... }
++ export function getCameraOrOriginalSource(camera, originalSource) { ... }
+
+# src/services/interpolation.js
++ import { getCameraOrOriginalSource } from '../utils/cameraSource.js';
+
+- source: 'image_exif',
++ source: getCameraOrOriginalSource(exifData.camera, 'image_exif'),
+
+# src/services/geolocationDatabase.js
++ import { shouldUseCameraAttribution } from '../utils/cameraSource.js';
++ 
++ getSourcePriority(source) {
++   // Check if it's a camera-based EXIF source
++   if (shouldUseCameraAttribution('image_exif') && 
++       source !== 'image_exif' && 
++       !this.sourcePriorities[source]) {
++     // This is likely a camera-based source, treat as high priority EXIF
++     return this.sourcePriorities['image_exif'];
++   }
++   return this.sourcePriorities[source] || 0;
++ }
+
+- const newPriority = this.sourcePriorities[source] || 0;
+- const existingPriority = existing ? (this.sourcePriorities[existing.source] || 0) : -1;
++ const newPriority = this.getSourcePriority(source);
++ const existingPriority = existing ? this.getSourcePriority(existing.source) : -1;
+```
+
+**Impact:** 
+- **Unified Source Attribution**: Both create-geo.js and main application now use identical camera-based source formatting
+- **EXIF-Only Focus**: Camera attribution applies only to EXIF-derived GPS coordinates, preserving timeline sources unchanged
+- **Enhanced Traceability**: Main application now provides descriptive camera sources like "Canon EOS R5" instead of generic "image_exif"
+- **Consistent Priority Handling**: Database service properly handles dynamic camera-based sources with appropriate priority levels
+- **Backward Compatibility**: Existing timeline_edits and interpolation sources remain unchanged
+
+**Scope:** Focused implementation targeting only EXIF GPS data sources while preserving all timeline-based and interpolation-based source attributions.
+
 ## Code Quality Improvements
 
 ### JavaScript Const Usage Optimization
